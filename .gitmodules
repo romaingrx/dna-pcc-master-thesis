@@ -1,3 +1,6 @@
 [submodule "simulators/mesa/mesa_dna_sim"]
 	path = simulators/mesa/mesa_dna_sim
 	url = git@github.com:umr-ds/mesa_dna_sim.git
+[submodule "research/standards/point_cloud_compression_slice_conditioning/pcc-geo-slicing"]
+	path = research/standards/point_cloud_compression_slice_conditioning/pcc-geo-slicing
+	url = git@github.com:mmspg/pcc-geo-slicing.git
