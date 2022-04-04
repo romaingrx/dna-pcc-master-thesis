@@ -4,3 +4,6 @@
 [submodule "research/standards/point_cloud_compression_slice_conditioning/pcc-geo-slicing"]
 	path = research/standards/point_cloud_compression_slice_conditioning/pcc-geo-slicing
 	url = git@github.com:mmspg/pcc-geo-slicing.git
+[submodule "research/standards/point_cloud_compression_geometry_color/pcc-geo-color"]
+	path = research/standards/point_cloud_compression_geometry_color/pcc-geo-color
+	url = git@github.com:mmspg/pcc-geo-color.git
