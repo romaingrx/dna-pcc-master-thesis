@@ -1,12 +1,9 @@
 [submodule "simulators/mesa/mesa_dna_sim"]
 	path = simulators/mesa/mesa_dna_sim
 	url = git@github.com:umr-ds/mesa_dna_sim.git
-[submodule "research/standards/point_cloud_compression_slice_conditioning/pcc-geo-slicing"]
+[submodule "compression/standards/point_cloud_compression_slice_conditioning/pcc-geo-slicing"]
 	path = compression/standards/point_cloud_compression_slice_conditioning/pcc-geo-slicing
 	url = git@github.com:mmspg/pcc-geo-slicing.git
-[submodule "research/standards/point_cloud_compression_geometry_color/pcc-geo-color"]
-	path = research/standards/point_cloud_compression_geometry_color/pcc-geo-color
-	url = git@github.com:mmspg/pcc-geo-color.git
 [submodule "compression/standards/point_cloud_compression_geometry_color/pcc-geo-color"]
 	path = compression/standards/point_cloud_compression_geometry_color/pcc-geo-color
 	url = git@github.com:mmspg/pcc-geo-color.git
