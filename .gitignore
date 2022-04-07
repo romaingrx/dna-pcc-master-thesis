@@ -3,3 +3,7 @@
 
 # hydra outputs
 *outputs
+
+# general purpose folders
+*data/
+*models/
