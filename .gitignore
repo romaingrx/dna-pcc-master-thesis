@@ -8,3 +8,7 @@
 *data/
 *models/
 playground/
+
+# Nextcloud files
+.sync*
+.owncloudsync.log
