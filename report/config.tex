@@ -1,0 +1,44 @@
+%!/usr/bin/env pdflatex
+%-*- coding: utf-8 -*-
+%@author : Romain Graux
+%@date : 2022 April 24, 11:46:53
+%@last modified : 2022 April 24, 15:24:21
+
+\documentclass{RomainGrauxThesis}
+
+% TO REMOVE
+\usepackage{lipsum}
+
+%% Import all packages and set the geometry
+\usepackage[english]{babel}
+\usepackage{geometry}
+% \usepackage[backend=bibtex,style=authoryear,natbib=true]{biblatex} % Use the bibtex backend with the authoryear citation style
+% \addbibresource{main.bib} % Add the main bibliography
+
+\geometry{
+    paper=a4paper, % Change to letterpaper for US letter
+    inner=2.5cm, % Inner margin
+    outer=3.8cm, % Outer margin
+    bindingoffset=.5cm, % Binding offset
+    top=1.5cm, % Top margin
+    bottom=1.5cm, % Bottom margin
+    %showframe, % Uncomment to show how the type block is set on the page
+}
+
+\usepackage{graphicx}
+\usepackage[colorlinks=false, allcolors=purple]{hyperref}
+
+%% Set all variables
+\author{Romain \textsc{Graux}}
+\thesistitle{Point cloud compression for DNA based storage}
+\supervisor{Dr. Touradj \textsc{Ebrahimi}}
+\university{EPFL}
+\lab{MMSPG}
+\faculty{Computer and Communication Sciences}
+\keywords{DNA, compression, point cloud, storage, deep learning.}
+
+\AtBeginDocument{
+    \hypersetup{pdftitle=\ttitle} % Set the PDF's title to your title
+    \hypersetup{pdfauthor=\authorname} % Set the PDF's author to your name
+    \hypersetup{pdfkeywords=\keywordnames} % Set the PDF's keywords to your keywords
+}

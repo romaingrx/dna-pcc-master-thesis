@@ -12,3 +12,11 @@ playground/
 # Nextcloud files
 .sync*
 .owncloudsync.log
+
+# Latex aux files
+*.aux
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.synctex.gz

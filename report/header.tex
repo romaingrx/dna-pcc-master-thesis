@@ -1,0 +1,37 @@
+%!/usr/bin/env pdflatex
+%-*- coding: utf-8 -*-
+%@author : Romain Graux
+%@date : 2022 April 24, 11:49:57
+%@last modified : 2022 April 24, 15:32:14
+
+\begin{titlepage}
+    \begin{center}
+        \vspace*{.15\textheight}
+        \begin{figure}[h]
+            \centering
+            \def\svgwidth{0.4\textwidth}
+            \input{images/epfl.pdf_tex}
+        \end{figure}
+        \vspace*{1.5cm}
+        % {\scshape\LARGE \univname\par}\vspace{1.5cm} % University name
+        \textsc{\Large Master Project}\\[0.5cm] % Thesis type
+
+        \rule{.9\linewidth}{.6pt} \\[0.5cm]
+        {\huge \bfseries \ttitle\par}\vspace{0.4cm} % Thesis title
+        \rule{.9\linewidth}{.6pt} \\[0.5cm]
+
+        \begin{minipage}[t]{0.4\textwidth}
+            \begin{flushleft} \large
+                \emph{Author:}\\
+                \href{https://romaingraux.xyz}{\authorname} % Author name - remove the \href bracket to remove the link
+            \end{flushleft}
+        \end{minipage}
+        \begin{minipage}[t]{0.4\textwidth}
+            \begin{flushright} \large
+                \emph{Supervisor:} \\
+                \href{https://people.epfl.ch/touradj.ebrahimi}{\supname} % Supervisor name - remove the \href bracket to remove the link
+            \end{flushright}
+        \end{minipage}\\[3cm]
+        \vfill
+    \end{center}
+\end{titlepage}
