@@ -7,7 +7,6 @@
 # general purpose folders
 *data/
 *models/
-playground/
 
 # Nextcloud files
 .sync*
@@ -20,3 +19,5 @@ playground/
 *.log
 *.out
 *.synctex.gz
+*.bbl
+*.blg

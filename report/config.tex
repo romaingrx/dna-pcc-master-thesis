@@ -2,18 +2,13 @@
 %-*- coding: utf-8 -*-
 %@author : Romain Graux
 %@date : 2022 April 24, 11:46:53
-%@last modified : 2022 April 24, 15:24:21
+%@last modified : 2022 May 04, 17:27:59
 
 \documentclass{RomainGrauxThesis}
-
-% TO REMOVE
-\usepackage{lipsum}
 
 %% Import all packages and set the geometry
 \usepackage[english]{babel}
 \usepackage{geometry}
-% \usepackage[backend=bibtex,style=authoryear,natbib=true]{biblatex} % Use the bibtex backend with the authoryear citation style
-% \addbibresource{main.bib} % Add the main bibliography
 
 \geometry{
     paper=a4paper, % Change to letterpaper for US letter
@@ -25,8 +20,13 @@
     %showframe, % Uncomment to show how the type block is set on the page
 }
 
+\usepackage{xcolor}
 \usepackage{graphicx}
+\usepackage{url}
+\def\UrlBreaks{\do\/\do-}
 \usepackage[colorlinks=false, allcolors=purple]{hyperref}
+
+\setlength{\parskip}{0.1cm}
 
 %% Set all variables
 \author{Romain \textsc{Graux}}
@@ -42,3 +42,17 @@
     \hypersetup{pdfauthor=\authorname} % Set the PDF's author to your name
     \hypersetup{pdfkeywords=\keywordnames} % Set the PDF's keywords to your keywords
 }
+
+%% Helping functions
+\newcommand{\translate}[1]{\textcolor{red}{#1}}
+\newcommand{\notsure}[1]{\textcolor{purple}{#1}}
+\newcommand{\illustrate}[1]{\textcolor{red}{\textbf{#1}}}
+\newcommand{\tocontinue}{
+\vspace{1cm}
+\textcolor{red}{
+    \hrule
+    \begin{center}
+        \huge{\textbf{To continue}}
+    \end{center}
+    \hrule
+}}
