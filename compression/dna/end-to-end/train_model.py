@@ -3,14 +3,16 @@
 """
 @author : Romain Graux
 @date : 2022 May 10, 11:15:58
-@last modified : 2022 May 11, 18:43:07
+@last modified : 2022 May 12, 12:18:51
 """
 
 import pdb
 
 import os
 import hydra
+import logging
 import numpy as np
+from tqdm import tqdm
 import multiprocessing
 import tensorflow as tf
 from functools import partial
@@ -21,6 +23,8 @@ from src import pc_io
 from src import processing
 from src.focal_loss import focal_loss
 from utils import train_test_split_ds
+
+logger = logging.getLogger(__name__)
 
 
 class Residual_Block(tf.keras.layers.Layer):
@@ -260,39 +264,49 @@ class CompressionModel(tf.keras.Model):
         return {m.name: m.result() for m in [self.focal_loss]}
 
 
+def f(pc, dense_tensor_shape, channels_last):
+    return pc
+
+
+def dir_to_ds(input_dir, resolution, channels_last):
+    """ Load all point clouds from the input_dir and transform them to a tensorflow dataset."""
+    # Load the point clouds
+    files = pc_io.get_files(input_dir)
+    # Load the blocks from the files.
+    p_min, p_max, dense_tensor_shape = pc_io.get_shape_data(resolution, channels_last)
+    points = pc_io.load_points(files, p_min, p_max)
+
+
+    with tf.device("CPU"):
+        logger.info("Transforming the point clouds to tensors")
+        points = [
+            processing.pc_to_tf(pc, dense_tensor_shape, channels_last)
+            for pc in tqdm(points)
+        ]
+
+        # Convert the sparse tensors to dense tensors.
+        logger.info("Transforming the sparse tensors to dense ones")
+        points = [processing.process_x(pc, dense_tensor_shape) for pc in tqdm(points)]
+
+
+    # Create a tensorflow dataset from the point clouds.
+    ds = tf.data.Dataset.from_tensor_slices(points)
+    return ds
+
+
+def train(args):
+    pass
+
+
 @hydra.main(config_name="config.yaml", config_path=".")
 def main(args):
     global points, ds, model, hist
 
-    # Load the point clouds
-    files = pc_io.get_files(args.io.input)
-    # Load the blocks from the files.
-    p_min, p_max, dense_tensor_shape = pc_io.get_shape_data(
-        args.blocks.resolution, args.blocks.channels_last
-    )
-    points = pc_io.load_points(files, p_min, p_max)
-
-    with tf.device("CPU"):
-        with multiprocessing.Pool() as pool:
-            # Transform the point clouds to tensors.
-            points = pool.map(
-                partial(
-                    processing.pc_to_tf,
-                    dense_tensor_shape=dense_tensor_shape,
-                    channels_last=args.blocks.channels_last,
-                ),
-                points,
-            )
-            # Convert the sparse tensors to dense tensors.
-            points = pool.map(
-                partial(processing.process_x, dense_tensor_shape=dense_tensor_shape),
-                points,
-            )
-
     # Create a tensorflow dataset from the point clouds.
+    ds = dir_to_ds(args.io.input, args.blocks.resolution, args.blocks.channels_last)
     ds = (
-        tf.data.Dataset.from_tensor_slices(points)
-        .shuffle(len(points))
+        ds
+        .shuffle(ds.cardinality())
         .batch(args.train.batch_size)
     )
 
@@ -301,8 +315,12 @@ def main(args):
         ds, validation_split=args.train.validation_split
     )
 
-    print(f"Training on {train_ds.cardinality().numpy()} batches with a {args.train.batch_size} batch size.")
-    print(f"Validating on {validation_ds.cardinality().numpy()} batches with a {args.train.batch_size} batch size.")
+    print(
+        f"Training on {train_ds.cardinality().numpy()} batches with a {args.train.batch_size} batch size."
+    )
+    print(
+        f"Validating on {validation_ds.cardinality().numpy()} batches with a {args.train.batch_size} batch size."
+    )
 
     # Load the model on multi worker GPUs.
     strategy = tf.distribute.MirroredStrategy()
@@ -316,7 +334,7 @@ def main(args):
             loss=None,
         )
 
-    # Train the model.
+        # Train the model.
     hist = model.fit(
         train_ds.prefetch(-1),
         validation_data=validation_ds.prefetch(-1),

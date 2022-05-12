@@ -21,3 +21,8 @@
 *.synctex.gz
 *.bbl
 *.blg
+
+# py files
+*.idea
+*__pycache__
+*.ipynb_checkpoints

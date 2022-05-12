@@ -110,6 +110,6 @@ def load_points(files, p_min, p_max, batch_size=32):
     with multiprocessing.Pool() as p:
         logger.info('Loading PCs into memory (parallel reading)')
         f = functools.partial(load_points_func, p_min=p_min, p_max=p_max)
-        points = np.array(list(tqdm(p.imap(f, files, batch_size), total=files_len)))
+        points = list(tqdm(p.imap(f, files, batch_size), total=files_len))
 
-    return points
+    return np.array(points, dtype=object)
