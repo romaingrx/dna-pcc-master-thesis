@@ -1,0 +1,15 @@
+io:
+    input: "/home/romaingrx/docs/thesis/compression/datasets/blocks_64/*"
+    output: "/home/romaingrx/docs/thesis/compression/dna/codec/saved_results"
+blocks:
+    resolution: 64
+    channels_last: true
+model:
+    device: "CPU"
+    latent_dim: 64
+    latent_depth: 160
+    num_filters: 64
+    alpha: 0.6
+    lmbda: 1.0
+    transfer_learning_model: "/home/romaingrx/docs/thesis/compression/standards/point_cloud_compression_slice_conditioning/models/a0.6_res_t64_Slice_cond_160-10_1750"
+
