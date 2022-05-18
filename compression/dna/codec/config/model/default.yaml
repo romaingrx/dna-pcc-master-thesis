@@ -1,10 +1,10 @@
 io:
-    input: "/home/romaingrx/docs/thesis/compression/datasets/blocks_64/*"
+    input: "/home/romaingrx/docs/thesis/compression/datasets/blocks_64_wooden/*"
     output: "/home/romaingrx/docs/thesis/compression/dna/codec/saved_results"
 blocks:
     resolution: 64
     channels_last: true
-model:
+architecture:
     device: "CPU"
     latent_dim: 64
     latent_depth: 160

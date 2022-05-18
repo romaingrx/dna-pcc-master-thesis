@@ -3,12 +3,14 @@
 """
 @author : Romain Graux
 @date : 2022 May 13, 11:24:49
-@last modified : 2022 May 16, 15:13:44
+@last modified : 2022 May 18, 18:57:30
 """
 
 import logging
+import numpy as np
 from tqdm import tqdm
 import tensorflow as tf
+from functools import wraps
 from src import pc_io, processing
 
 logger = logging.getLogger(__name__)
@@ -34,7 +36,7 @@ def dir_to_ds(input_dir, resolution, channels_last):
         points = [processing.process_x(pc, dense_tensor_shape) for pc in tqdm(points)]
 
     # Create a tensorflow dataset from the point clouds.
-    ds = tf.data.Dataset.from_tensor_slices(points)
+    ds = tf.data.Dataset.from_tensor_slices({"input": points, "fname": files})
     return ds
 
 
@@ -70,3 +72,35 @@ def train_test_split_ds(ds, validation_split=0.2, test_split=0.0):
         validation_ds = validation_ds.take(validation_size)
         return train_ds, validation_ds, test_ds
     return train_ds, validation_ds
+
+
+def n_dimensional(fun: callable):
+    """
+    Decorator to apply a function with a flat array from a n-dimensional array.
+    """
+
+    @wraps(fun)
+    def wrapper(*args, **kwargs):
+        # Get the array from the kwargs
+        arg = kwargs.pop("from_arg", "array")
+        array = kwargs.pop(arg)
+        if array is None:
+            raise ValueError(
+                f"{arg} is not defined, when using n_dimensional you have to define the argument to get the array from."
+            )
+
+        # Flat the array
+        flat_array = np.reshape(array, (-1,))
+        # Apply the function to the flat array
+        y = fun(*args, **{**kwargs, arg: flat_array})
+        # Reshape the result
+        return np.reshape(y, np.shape(array))
+
+    return wrapper
+
+def repair_tf_numpy_saved(fname):
+    tmp = str(np.load(fname, allow_pickle=True, encoding='bytes'))[19:-3]
+    repaired = [x for x in tmp.split("'") if len(x)>10]
+    for c in ["A", "C", "G", "T"]:
+        assert tmp.count(c) == ''.join(repaired).count(c), f"{c}, not the same number"
+    return repaired
