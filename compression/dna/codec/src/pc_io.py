@@ -97,6 +97,7 @@ def get_shape_data(resolution, channels_last):
 
 
 def get_files(input_glob):
+    logger.info(f"Loading files from {input_glob}")
     return np.array(glob(input_glob, recursive=True))
 
 

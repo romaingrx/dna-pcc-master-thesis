@@ -3,16 +3,16 @@
 """
 @author : Romain Graux
 @date : 2022 May 10, 11:15:58
-@last modified : 2022 May 17, 15:03:34
+@last modified : 2022 May 20, 16:13:47
 """
-
-from sys import settrace
 
 import os
 import hydra
+import pickle
 import logging
 import numpy as np
 from tqdm import tqdm
+from glob import glob
 import multiprocessing
 import tensorflow as tf
 from functools import partial
@@ -22,24 +22,17 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
 from src import pc_io
 from src import processing
-from utils import dir_to_ds, number_of_nucleotides, train_test_split_ds
-# from codec import BatchMultiChannelsJpegDNA
+from simulator import MESASimulator
 from src.focal_loss import focal_loss
 from layers import AnalysisTransform, SynthesisTransform
+from utils import dir_to_ds, number_of_nucleotides, train_test_split_ds, n_dimensional
+
+# from codec import BatchMultiChannelsJpegDNA
 
 logger = logging.getLogger(__name__)
 
 from itertools import product
 from ray.util.multiprocessing import Pool
-
-def _encode_worker(x, alpha):
-    """Encode a 2 dimensional array into several oligos."""
-    return JpegDNA(alpha).encode(x.numpy(), "from_img")
-
-
-def _decode_worker(oligos, alpha):
-    """Decode a list of oligos into a 2 dimensional array."""
-    return JpegDNA(alpha).decode(oligos.numpy().astype(str))
 
 
 class BatchMultiChannelsJpegDNA:
@@ -53,8 +46,13 @@ class BatchMultiChannelsJpegDNA:
         assert (
             len(x.shape) == 4
         ), "x must be a 4D tensor (batch, height, width, channels)"
-        # Input shape: (batch, height, width, channels)
-        # Output shape: (batch, channels, nb_oligos)
+
+        global _encode_worker
+
+        def _encode_worker(x, alpha):
+            """Encode a 2 dimensional array into several oligos."""
+            return JpegDNA(alpha).encode(x.numpy(), "from_img")
+
         n_batches, n_channels = x.shape[0], x.shape[3]
         indexes = list(product(range(n_batches), range(n_channels)))
         f = partial(_encode_worker, alpha=self._alpha)
@@ -72,6 +70,13 @@ class BatchMultiChannelsJpegDNA:
         # Input shape: (batch, channels, nb_oligos)
         # Output shape: (batch, height, width, channels)
         assert len(x.shape) == 3, "x must be a 3D tensor (batch, channels, nb_oligos)"
+
+        global _decode_worker
+
+        def _decode_worker(oligos, alpha):
+            """Decode a list of oligos into a 2 dimensional array."""
+            return JpegDNA(alpha).decode(oligos.numpy().astype(str))
+
         n_batch, n_channels, _ = (
             x.bounding_shape() if type(x) == tf.RaggedTensor else x.shape
         )
@@ -174,13 +179,14 @@ class CompressionModel(tf.keras.Model):
             codec = BatchMultiChannelsJpegDNA(self._args.alpha)
             quantized_x = codec.decode_batch(oligos)
 
-
         # Dequantize the blocks
-        x, *_ = tf.quantization.dequantize(tf.cast(quantized_x, tf.quint8), *self._quantize_range)
+        x, *_ = tf.quantization.dequantize(
+            tf.cast(quantized_x, tf.quint8), *self._quantize_range
+        )
 
         # Turn the images into blocks
         x = tf.reshape(x, [batch_size, *self._shape[1:]])
-        
+
         return x
 
     def compress(self, x):
@@ -241,37 +247,43 @@ class CompressionModel(tf.keras.Model):
         return {m.name: m.result() for m in [self.focal_loss]}
 
 
-@hydra.main(config_name="config.yaml", config_path=".")
+def compress(ds, model, simulator, args):
+    """Compress the dataset while simulating errors in the latent representation."""
+
+    # First, create directory if it does not exist
+    for path in args.model.io.output.values():
+        os.makedirs(path, exist_ok=True)
+
+    # Then, compress/decompress the dataset and save the results
+    for data in tqdm(ds, total=ds.cardinality().numpy()):
+        x = data["input"]
+        name = data["fname"].numpy().decode("UTF-8").split("/")[-1].split(".")[0]
+        np.save(f"{args.model.io.output.x}/{name}.npy", x.numpy())
+        z, info = model.compress(tf.expand_dims(x, 0))
+        np.save(f"{args.model.io.output.z}/{name}.npy", z[0].numpy())
+        x_hat = model.decompress(z)[0]
+        np.save(f"{args.model.io.output.x_hat}/{name}.npy", x_hat.numpy())
+
+
+@hydra.main(config_path="config/compress", config_name="default.yaml")
 def main(args):
-    global points, ds, model, hist, x, z, x_hat, info
+    global points, ds, model, hist, x, z, x_hat, info, simulator, argss
+    argss = args
 
     # Create a tensorflow dataset from the point clouds.
-    ds = dir_to_ds(args.io.input, args.blocks.resolution, args.blocks.channels_last)
-    # ds = ds.shuffle(ds.cardinality()).batch(args.train.batch_size)
-
-    # Train, test split the dataset.
-    # train_ds, validation_ds = train_test_split_ds(
-    #     ds, validation_split=args.train.validation_split
-    # )
-    # logger.info(
-    #     f"Training on {train_ds.cardinality().numpy()} batches with a {args.train.batch_size} batch size."
-    # )
-    # logger.info(
-    #     f"Validating on {validation_ds.cardinality().numpy()} batches with a {args.train.batch_size} batch size."
-    # )
+    ds = dir_to_ds(
+        args.model.io.input,
+        args.model.blocks.resolution,
+        args.model.blocks.channels_last,
+    )
 
     # Create the model.
-    model = CompressionModel(args.model)
+    model = CompressionModel(args.model.architecture)
 
-    files = os.listdir(args.io.input[:-1])
-    for x, fname in tqdm(zip(ds, files), total=len(files)):
-        name = fname.split(".")[0]
-        np.save(f"{args.io.output}/x/{name}.npy", x)
-        z, info = model.compress(tf.expand_dims(x, 0))
-        np.save(f"{args.io.output}/z/{name}.npy", z[0])
-        x_hat = model.decompress(z)[0]
-        np.save(f"{args.io.output}/x_hat/{name}.npy", x_hat)
+    # Create the simulator.
+    simulator = MESASimulator(args.simulator)
 
+    compress(ds, model, simulator, args)
 
 
 if __name__ == "__main__":
