@@ -1,0 +1,6 @@
+io:
+    input: "${hydra:runtime.cwd}/results/compressed_dna_sequences" # The input directory with the compressed DNA sequences
+    output: "${hydra:runtime.cwd}/results/reconstruct" # The input directory to compress
+blocks:
+    resolution: 64 # The resolution of the blocks
+    channels_last: true

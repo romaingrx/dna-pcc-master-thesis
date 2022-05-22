@@ -7,7 +7,4 @@ metrics:
     - nucleotide_rate
     - num_voxels
     - num_occupied_voxels
-    - focal_loss:
-        alpha: 0.6
-        gamma: 2.0
 

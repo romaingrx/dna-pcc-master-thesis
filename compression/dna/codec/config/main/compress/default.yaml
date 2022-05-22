@@ -1,0 +1,7 @@
+io:
+    input: "${hydra:runtime.cwd}/datasets/blocks_64_wooden" # The input directory to compress
+    output: "${hydra:runtime.cwd}/results/compressed_dna_sequences" # The output directory for the compressed DNA sequences
+blocks:
+    resolution: 64 # The resolution of the blocks
+    channels_last: true
+threshold: 0.5 # Threshold to compute the occupancy map (can be a float between 0 and 1 or 'adaptive' to compute the best threshold)

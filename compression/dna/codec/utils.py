@@ -3,7 +3,7 @@
 """
 @author : Romain Graux
 @date : 2022 May 13, 11:24:49
-@last modified : 2022 May 20, 15:19:40
+@last modified : 2022 May 18, 16:45:15
 """
 
 import logging
@@ -18,7 +18,6 @@ logger = logging.getLogger(__name__)
 
 def dir_to_ds(input_dir, resolution, channels_last):
     """Load all point clouds from the input_dir and transform them to a tensorflow dataset."""
-    input_dir = input_dir.rstrip("/*") + "/*"
     # Load the point clouds
     files = pc_io.get_files(input_dir)
     # Load the blocks from the files.
@@ -51,12 +50,6 @@ def number_of_nucleotides(x):
         ]
     )
 
-def number_of_nucleotides_test(x):
-    """Return the number of nucleotides in the latent space."""
-    # In general all oligos are the same length (200) but it is preferable to compute the number of nucleotides with the length of each one.
-    return np.sum(
-            [len(elem) for elem in np.reshape(x, (-1,))]
-    )
 
 def train_test_split_ds(ds, validation_split=0.2, test_split=0.0):
     assert 0 <= validation_split <= 1, "validation_split must be between 0 and 1"
@@ -104,10 +97,3 @@ def n_dimensional(fun: callable):
         return np.reshape(y, np.shape(array))
 
     return wrapper
-
-def repair_tf_numpy_saved(fname):
-    tmp = str(np.load(fname, allow_pickle=True, encoding='bytes'))[19:-3]
-    repaired = [x for x in tmp.split("'") if len(x)>10]
-    for c in ["A", "C", "G", "T"]:
-        assert tmp.count(c) == ''.join(repaired).count(c), f"{c}, not the same number"
-    return repaired

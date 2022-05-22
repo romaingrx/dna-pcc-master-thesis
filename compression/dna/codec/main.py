@@ -3,7 +3,7 @@
 """
 @author : Romain Graux
 @date : 2022 May 10, 11:15:58
-@last modified : 2022 May 20, 16:13:47
+@last modified : 2022 May 22, 16:28:02
 """
 
 import os
@@ -15,6 +15,7 @@ from tqdm import tqdm
 from glob import glob
 import multiprocessing
 import tensorflow as tf
+import tensorflow_compression as tfc
 from functools import partial
 from jpegdna.codecs import JpegDNA
 
@@ -24,8 +25,10 @@ from src import pc_io
 from src import processing
 from simulator import MESASimulator
 from src.focal_loss import focal_loss
+from src.compression_utilities import pack_tensor, compute_optimal_threshold
 from layers import AnalysisTransform, SynthesisTransform
 from utils import dir_to_ds, number_of_nucleotides, train_test_split_ds, n_dimensional
+from helpers import omegaconf2namespace
 
 # from codec import BatchMultiChannelsJpegDNA
 
@@ -48,7 +51,6 @@ class BatchMultiChannelsJpegDNA:
         ), "x must be a 4D tensor (batch, height, width, channels)"
 
         global _encode_worker
-
         def _encode_worker(x, alpha):
             """Encode a 2 dimensional array into several oligos."""
             return JpegDNA(alpha).encode(x.numpy(), "from_img")
@@ -72,7 +74,6 @@ class BatchMultiChannelsJpegDNA:
         assert len(x.shape) == 3, "x must be a 3D tensor (batch, channels, nb_oligos)"
 
         global _decode_worker
-
         def _decode_worker(oligos, alpha):
             """Decode a list of oligos into a 2 dimensional array."""
             return JpegDNA(alpha).decode(oligos.numpy().astype(str))
@@ -94,14 +95,16 @@ class BatchMultiChannelsJpegDNA:
 class CompressionModel(tf.keras.Model):
     """Main model class."""
 
-    def __init__(self, args):
-        super().__init__()
+    def __init__(self, args, name="CompressionModel"):
+        super().__init__(name=name)
         self._args = args
+
+        self.prior = tfc.NoisyDeepFactorized(batch_shape=[args.latent_depth])
 
         self.analysis_transform = AnalysisTransform(args.num_filters, args.latent_depth)
         self.synthesis_transform = SynthesisTransform(args.num_filters)
+
         if args.transfer_learning_model is not None:
-            import tensorflow_compression as tfc
 
             # Initialize the weights of the analysis transform
             a = self.analysis_transform.call(tf.random.normal([1, 64, 64, 64, 1]))
@@ -145,16 +148,15 @@ class CompressionModel(tf.keras.Model):
         assert (
             len(x.shape) == 5
         ), "The input must be of shape [batch_size, b1, b2, b3, latent_depth]."
-        self._shape = batch_size, b1, b2, b3, latent_depth = tf.shape(
+        shape = batch_size, b1, b2, b3, latent_depth = tf.shape(
             x
         )  # TODO change: the way to store the mid shape
 
         # Quantize the blocks
-        self._quantize_range = (
-            tf.reduce_min(x),
-            tf.reduce_max(x),
-        )  # TODO change: the way to store the range
-        quantized_x, *_ = tf.quantization.quantize(x, *self._quantize_range, tf.quint8)
+        quantize_range = (
+            self._args.quantize.min, self._args.quantize.max
+        )  # TODO change: the way to compute the quantization range
+        quantized_x, *_ = tf.quantization.quantize(x, *quantize_range, tf.quint8)
 
         # Turn the blocks into several images to use the Jpeg DNA codec
         quantized_x = tf.reshape(quantized_x, [batch_size, b1 * b2, b3, latent_depth])
@@ -165,9 +167,9 @@ class CompressionModel(tf.keras.Model):
             codec = BatchMultiChannelsJpegDNA(self._args.alpha)
             oligos = codec.encode_batch(tf.cast(quantized_x, tf.int32))
 
-        return oligos
+        return oligos, shape[1:]
 
-    def dna_decoding(self, oligos):
+    def dna_decoding(self, oligos, shape):
         """Decodes the DNA oligos to latent blocks."""
         assert (
             len(oligos.shape) == 3
@@ -179,13 +181,15 @@ class CompressionModel(tf.keras.Model):
             codec = BatchMultiChannelsJpegDNA(self._args.alpha)
             quantized_x = codec.decode_batch(oligos)
 
+        quantize_range = (self._args.quantize.min, self._args.quantize.max)
+
         # Dequantize the blocks
         x, *_ = tf.quantization.dequantize(
-            tf.cast(quantized_x, tf.quint8), *self._quantize_range
+            tf.cast(quantized_x, tf.quint8), *quantize_range
         )
 
         # Turn the images into blocks
-        x = tf.reshape(x, [batch_size, *self._shape[1:]])
+        x = tf.reshape(x, [batch_size, *shape])
 
         return x
 
@@ -199,18 +203,18 @@ class CompressionModel(tf.keras.Model):
         y = self.analysis_transform(x)
 
         # Build the bottleneck
-        z = self.dna_encoding(y)
+        z, shape  = self.dna_encoding(y)
 
         info = {
             "num_voxels": num_voxels,
             "num_occupied_voxels": num_occupied_voxels,
         }
 
-        return z, info
+        return z, shape, info
 
-    def decompress(self, z):
+    def decompress(self, z, y_shape):
         # Build the decoder (synthesis) half of the hierarchical autoencoder.
-        y_hat = self.dna_decoding(z)
+        y_hat = self.dna_decoding(z, y_shape)
 
         # Build the bottleneck
         x_hat = self.synthesis_transform(y_hat)
@@ -246,44 +250,68 @@ class CompressionModel(tf.keras.Model):
         self.focal_loss.update_state(loss)
         return {m.name: m.result() for m in [self.focal_loss]}
 
+def load_model(args):
+    """Loads the model."""
+    if args.model_checkpoint != '':
+        return tf.keras.models.load_model(args.model_checkpoint)
+    return CompressionModel(args)
 
-def compress(ds, model, simulator, args):
+
+
+def compress(model, args):
     """Compress the dataset while simulating errors in the latent representation."""
 
-    # First, create directory if it does not exist
-    for path in args.model.io.output.values():
-        os.makedirs(path, exist_ok=True)
+    # Create a tensorflow dataset from the point clouds.
+    ds = dir_to_ds(
+        args.io.input,
+        args.blocks.resolution,
+        args.blocks.channels_last,
+    )
 
     # Then, compress/decompress the dataset and save the results
     for data in tqdm(ds, total=ds.cardinality().numpy()):
         x = data["input"]
         name = data["fname"].numpy().decode("UTF-8").split("/")[-1].split(".")[0]
-        np.save(f"{args.model.io.output.x}/{name}.npy", x.numpy())
-        z, info = model.compress(tf.expand_dims(x, 0))
-        np.save(f"{args.model.io.output.z}/{name}.npy", z[0].numpy())
-        x_hat = model.decompress(z)[0]
-        np.save(f"{args.model.io.output.x_hat}/{name}.npy", x_hat.numpy())
+
+        z, y_shape, _ = model.compress(tf.expand_dims(x, 0))
+
+        # Calculate the adaptive threshold.
+        if args.threshold == 'adaptive':
+            logger.info("Calculating the adaptive threshold...")
+            threshold = compute_optimal_threshold(model, z, x, delta_t=.01, breakpt=150, verbose=1)
+        else:
+            assert 0. < args.threshold < 1., "Threshold must be between 0 and 1."
+            threshold = tf.constant(args.threshold)
+
+        logger.info("Threshold: %f", threshold)
+        logger.info("Pack the representations...")
+        nucelotide_stream = pack_tensor(threshold, y_shape, z, bytes_length=2)
+
+        logger.info("Saving the compressed data to %s", args.io.output)
+
+        os.makedirs(args.io.output, exist_ok=True)
+        with open(os.path.join(args.io.output, name + ".dna"), "wb") as f:
+            f.write(nucelotide_stream)
 
 
-@hydra.main(config_path="config/compress", config_name="default.yaml")
-def main(args):
+
+@hydra.main(config_path="config/main", config_name="default.yaml", version_base="1.2")
+def main(cfg):
     global points, ds, model, hist, x, z, x_hat, info, simulator, argss
-    argss = args
+    args = omegaconf2namespace(cfg)
 
-    # Create a tensorflow dataset from the point clouds.
-    ds = dir_to_ds(
-        args.model.io.input,
-        args.model.blocks.resolution,
-        args.model.blocks.channels_last,
-    )
+    if args.task not in ["compress", "decompress"]:
+        raise ValueError(f"Unknown task: {args.task}, choose between {tasks}")
 
-    # Create the model.
-    model = CompressionModel(args.model.architecture)
+    # Load the model
+    model = load_model(args.architecture)
 
-    # Create the simulator.
-    simulator = MESASimulator(args.simulator)
-
-    compress(ds, model, simulator, args)
+    if args.task == "compress":
+        compress(model, args.compress)
+    elif args.task == "decompress":
+        # TODO: Implement decompression
+        raise NotImplementedError
+        decompress(model, args.decompress)
 
 
 if __name__ == "__main__":
