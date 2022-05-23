@@ -1,6 +1,7 @@
 io:
     input: "${hydra:runtime.cwd}/datasets/blocks_64_wooden" # The input directory to compress
     output: "${hydra:runtime.cwd}/results/compressed_dna_sequences" # The output directory for the compressed DNA sequences
+    overwrite: false # If true, will compress even if the file already exists
 blocks:
     resolution: 64 # The resolution of the blocks
     channels_last: true

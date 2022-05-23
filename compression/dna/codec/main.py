@@ -3,7 +3,7 @@
 """
 @author : Romain Graux
 @date : 2022 May 10, 11:15:58
-@last modified : 2022 May 23, 18:35:15
+@last modified : 2022 May 23, 22:42:23
 """
 
 from functools import partial
@@ -280,6 +280,10 @@ def compress(model, args):
     for data in tqdm(ds, total=ds.cardinality().numpy()):
         x = data["input"]
         name = data["fname"].numpy().decode("UTF-8").split("/")[-1].split(".")[0]
+        out_fname = os.path.join(args.io.output, name + ".dna")
+        if os.path.exists(out_fname) and not args.io.overwrite:
+            logger.info(f"Because compress.io.overwrite: skipping {out_fname}")
+            continue
 
         z, y_shape, _ = model.compress(tf.expand_dims(x, 0))
         z_strings = z[0]
@@ -310,10 +314,8 @@ def compress(model, args):
 
         # Create recursively the output directory if it does not exist.
         os.makedirs(args.io.output, exist_ok=True)
-        with open(os.path.join(args.io.output, name + ".dna"), "w+") as f:
+        with open(out_fname, "w+") as f:
             f.write(nucleotide_stream)
-
-        return
 
 
 def decompress(model, args):
@@ -324,17 +326,21 @@ def decompress(model, args):
 
     for fname in tqdm(files):
         name = fname.split("/")[-1].split(".")[0]
+
+        out_fname = os.path.join(args.io.output, name + ".dna")
+        if os.path.exists(out_fname) and not args.io.overwrite:
+            logger.info(f"Because decompress.io.overwrite: skipping {out_fname}")
+            continue
+
         with open(fname, "r") as fd:
             nucleotide_stream = fd.read()
 
-        global threshold, oligo_length, y_shape, z_strings
         threshold, _, y_shape, z_strings = unpack_tensor(
             nucleotide_stream,
         )
 
         # Reconstruct the point clouds.
         logger.info("Reconstructing the point clouds...")
-        global x_hat
         x_hat = model.decompress(tf.expand_dims(z_strings, 0), y_shape).numpy()[0]
 
         pa = np.argwhere(x_hat[..., 0] > threshold.numpy()).astype(np.float32)
@@ -343,8 +349,6 @@ def decompress(model, args):
         os.makedirs(args.io.output, exist_ok=True)
 
         pc_io.write_df(args.io.output.rstrip("/*") + f"/{name}.ply", pc_io.pa_to_df(pa))
-
-        return
 
 
 @hydra.main(config_path="config/main", config_name="default.yaml", version_base="1.2")
