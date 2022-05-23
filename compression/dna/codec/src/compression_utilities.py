@@ -52,7 +52,12 @@ def nucleotides_to_bytes(nucleotides, bits_type=8):
     return bytestream
 
 
-def pack_tensor(threshold, oligo_length, y_shape, z_strings, bytes_length=2) -> str:
+def pack_tensor(
+    threshold: tf.float32,
+    oligo_length: tf.int32,
+    y_shape: tf.constant,
+    z_strings: tf.ragged.constant,
+) -> str:
     """
     Pack the tensor of nucleotides into a single nucelotide string.
 
@@ -64,6 +69,10 @@ def pack_tensor(threshold, oligo_length, y_shape, z_strings, bytes_length=2) -> 
     Returns:
         A string of DNA nucleotides with structure:
         [threshold, y_shape, *z_length, *z_strings]
+
+    Remarks:
+        All lengths are encoded on 1 byte, so the maximum length is 255.
+        It is possible to encode on several bytes if needed.
     """
 
     threshold_int = (np.round(threshold.numpy() * 100)).astype("uint8")
@@ -79,11 +88,11 @@ def pack_tensor(threshold, oligo_length, y_shape, z_strings, bytes_length=2) -> 
         + oligo_length_string
         + y_shape_string
         + z_length_strings
-        + "".join(np.reshape(z_strings.numpy().astype(str), (-1,)))
+        + "".join(tf.reshape(z_strings, (-1,)).numpy().astype(str))
     )
 
 
-def unpack_tensor(nucelotidestream, bytes_length=2):
+def unpack_tensor(nucelotidestream):
     """
     Unpack the tensor of nucleotides into a single nucelotide string.
 
@@ -260,7 +269,7 @@ if __name__ == "__main__":
         [
             [
                 "".join(np.random.choice(["A", "C", "G", "T"], size=(oligo_length,)))
-                for _ in range(10)
+                for _ in range(np.random.randint(2, 10))
             ]
             for _ in range(latent_depth)
         ]
@@ -279,5 +288,11 @@ if __name__ == "__main__":
 
     assert unpacked_threshold == threshold
     assert unpacked_oligo_length == oligo_length
-    assert (unpacked_y_shape == y_shape).numpy().all()
-    assert (unpacked_z_strings == z_strings).numpy().all()
+    assert (y_shape == unpacked_y_shape).numpy().all()
+    assert (
+        (z_strings.bounding_shape() == unpacked_z_strings.bounding_shape())
+        .numpy()
+        .all()
+    )
+    assert z_strings.to_list() == unpacked_z_strings.to_list()
+    print("All tests passed.")

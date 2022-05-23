@@ -1,4 +1,0 @@
-host: workstation.romaingraux.xyz
-port: 5001
-secure: False
-n_workers: all #Choice between an integer or all

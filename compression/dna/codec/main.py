@@ -3,7 +3,7 @@
 """
 @author : Romain Graux
 @date : 2022 May 10, 11:15:58
-@last modified : 2022 May 22, 16:28:02
+@last modified : 2022 May 23, 16:20:13
 """
 
 import os
@@ -39,6 +39,8 @@ from ray.util.multiprocessing import Pool
 
 
 class BatchMultiChannelsJpegDNA:
+    oligo_length = 200 # Weird but impossible to adapt in Xavier's code
+
     def __init__(self, alpha):
         self._alpha = alpha
 
@@ -256,6 +258,7 @@ def load_model(args):
         return tf.keras.models.load_model(args.model_checkpoint)
     return CompressionModel(args)
 
+z = None
 
 
 def compress(model, args):
@@ -273,6 +276,7 @@ def compress(model, args):
         x = data["input"]
         name = data["fname"].numpy().decode("UTF-8").split("/")[-1].split(".")[0]
 
+        global z
         z, y_shape, _ = model.compress(tf.expand_dims(x, 0))
 
         # Calculate the adaptive threshold.
@@ -285,13 +289,16 @@ def compress(model, args):
 
         logger.info("Threshold: %f", threshold)
         logger.info("Pack the representations...")
-        nucelotide_stream = pack_tensor(threshold, y_shape, z, bytes_length=2)
+        nucleotide_stream = pack_tensor(threshold, BatchMultiChannelsJpegDNA.oligo_length, y_shape, z)
 
         logger.info("Saving the compressed data to %s", args.io.output)
 
+        # Create recursively the output directory if it does not exist.
         os.makedirs(args.io.output, exist_ok=True)
-        with open(os.path.join(args.io.output, name + ".dna"), "wb") as f:
-            f.write(nucelotide_stream)
+        with open(os.path.join(args.io.output, name + ".dna"), "w+") as f:
+            f.write(nucleotide_stream)
+
+        return 
 
 
 
