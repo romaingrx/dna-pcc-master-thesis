@@ -101,12 +101,14 @@ def get_files(input_glob):
     return np.array(glob(input_glob, recursive=True))
 
 
-def load_points_func(x, p_min, p_max):
-    return load_pc(x, p_min, p_max).points
 
 
 def load_points(files, p_min, p_max, batch_size=32):
     files_len = len(files)
+
+    global load_points_func
+    def load_points_func(x, p_min, p_max):
+        return load_pc(x, p_min, p_max).points
 
     with multiprocessing.Pool() as p:
         logger.info('Loading PCs into memory (parallel reading)')
@@ -114,3 +116,4 @@ def load_points(files, p_min, p_max, batch_size=32):
         points = list(tqdm(p.imap(f, files, batch_size), total=files_len))
 
     return np.array(points, dtype=object)
+

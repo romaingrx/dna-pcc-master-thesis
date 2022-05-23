@@ -200,7 +200,7 @@ def compute_optimal_threshold(
         2,
     }, "Verbose should be either 0(no printing), 1 (partial printing) or 2 (full printing)"
     # Decompress the latent tensor.
-    x_hat = tf.squeeze(model.decompress(z_strings, y_shape))
+    x_hat = tf.squeeze(model.decompress(tf.expand_dims(z_strings, 0), y_shape))
     x_hat = x_hat.numpy()
 
     # Prepare parameters for search.

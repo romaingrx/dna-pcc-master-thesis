@@ -3,43 +3,44 @@
 """
 @author : Romain Graux
 @date : 2022 May 10, 11:15:58
-@last modified : 2022 May 23, 16:20:13
+@last modified : 2022 May 23, 18:35:15
 """
 
-import os
+from functools import partial
+from itertools import product
+from tqdm import tqdm
 import hydra
-import pickle
 import logging
 import numpy as np
-from tqdm import tqdm
-from glob import glob
-import multiprocessing
+import os
 import tensorflow as tf
 import tensorflow_compression as tfc
-from functools import partial
 from jpegdna.codecs import JpegDNA
+from ray.util.multiprocessing import Pool
 
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
-from src import pc_io
-from src import processing
-from simulator import MESASimulator
-from src.focal_loss import focal_loss
-from src.compression_utilities import pack_tensor, compute_optimal_threshold
-from layers import AnalysisTransform, SynthesisTransform
-from utils import dir_to_ds, number_of_nucleotides, train_test_split_ds, n_dimensional
 from helpers import omegaconf2namespace
+from layers import AnalysisTransform, SynthesisTransform
+from src import pc_io
+from src.compression_utilities import (
+    pack_tensor,
+    unpack_tensor,
+    compute_optimal_threshold,
+)
+from src.focal_loss import focal_loss
+from utils import (
+    pc_dir_to_ds,
+    number_of_nucleotides,
+)
 
 # from codec import BatchMultiChannelsJpegDNA
 
 logger = logging.getLogger(__name__)
-
-from itertools import product
-from ray.util.multiprocessing import Pool
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
 
 class BatchMultiChannelsJpegDNA:
-    oligo_length = 200 # Weird but impossible to adapt in Xavier's code
+    oligo_length = 200  # Weird but impossible to adapt in Xavier's code
 
     def __init__(self, alpha):
         self._alpha = alpha
@@ -53,6 +54,7 @@ class BatchMultiChannelsJpegDNA:
         ), "x must be a 4D tensor (batch, height, width, channels)"
 
         global _encode_worker
+
         def _encode_worker(x, alpha):
             """Encode a 2 dimensional array into several oligos."""
             return JpegDNA(alpha).encode(x.numpy(), "from_img")
@@ -76,6 +78,7 @@ class BatchMultiChannelsJpegDNA:
         assert len(x.shape) == 3, "x must be a 3D tensor (batch, channels, nb_oligos)"
 
         global _decode_worker
+
         def _decode_worker(oligos, alpha):
             """Decode a list of oligos into a 2 dimensional array."""
             return JpegDNA(alpha).decode(oligos.numpy().astype(str))
@@ -122,7 +125,8 @@ class CompressionModel(tf.keras.Model):
                     transfer_model.analysis_transform.weights
                 )
 
-                # Have to set manually the weights of the synthesis transform because the weights are not stored in the same order
+                # Have to set manually the weights of the synthesis transform
+                # because the weights are not stored in the same order
                 self.synthesis_transform.block1.set_weights(
                     transfer_model.synthesis_transform.block1.weights
                 )
@@ -156,7 +160,8 @@ class CompressionModel(tf.keras.Model):
 
         # Quantize the blocks
         quantize_range = (
-            self._args.quantize.min, self._args.quantize.max
+            self._args.quantize.min,
+            self._args.quantize.max,
         )  # TODO change: the way to compute the quantization range
         quantized_x, *_ = tf.quantization.quantize(x, *quantize_range, tf.quint8)
 
@@ -173,9 +178,10 @@ class CompressionModel(tf.keras.Model):
 
     def dna_decoding(self, oligos, shape):
         """Decodes the DNA oligos to latent blocks."""
-        assert (
-            len(oligos.shape) == 3
-        ), "The input must be of shape [batch_size, latent_depth, nb_oligos]."
+        assert len(oligos.shape) == 3, (
+            f"The input must be of shape [batch_size, latent_depth, nb_oligos] "
+            "but received {oligos.shape}."
+        )
         batch_size, latent_depth, nb_oligos = oligos.shape
         # Decode the DNA oligos to images
         # logger.info("Decoding the DNA oligos to latent blocks...")
@@ -205,7 +211,7 @@ class CompressionModel(tf.keras.Model):
         y = self.analysis_transform(x)
 
         # Build the bottleneck
-        z, shape  = self.dna_encoding(y)
+        z, shape = self.dna_encoding(y)
 
         info = {
             "num_voxels": num_voxels,
@@ -252,20 +258,19 @@ class CompressionModel(tf.keras.Model):
         self.focal_loss.update_state(loss)
         return {m.name: m.result() for m in [self.focal_loss]}
 
+
 def load_model(args):
     """Loads the model."""
-    if args.model_checkpoint != '':
+    if args.model_checkpoint != "":
         return tf.keras.models.load_model(args.model_checkpoint)
     return CompressionModel(args)
 
-z = None
-
 
 def compress(model, args):
-    """Compress the dataset while simulating errors in the latent representation."""
+    """Compress the dataset"""
 
     # Create a tensorflow dataset from the point clouds.
-    ds = dir_to_ds(
+    ds = pc_dir_to_ds(
         args.io.input,
         args.blocks.resolution,
         args.blocks.channels_last,
@@ -276,20 +281,30 @@ def compress(model, args):
         x = data["input"]
         name = data["fname"].numpy().decode("UTF-8").split("/")[-1].split(".")[0]
 
-        global z
         z, y_shape, _ = model.compress(tf.expand_dims(x, 0))
+        z_strings = z[0]
 
         # Calculate the adaptive threshold.
-        if args.threshold == 'adaptive':
+        if args.threshold == "adaptive":
             logger.info("Calculating the adaptive threshold...")
-            threshold = compute_optimal_threshold(model, z, x, delta_t=.01, breakpt=150, verbose=1)
+            threshold = compute_optimal_threshold(
+                model,
+                z_strings,
+                y_shape,
+                data["pc"].numpy(),
+                delta_t=0.01,
+                breakpt=150,
+                verbose=1,
+            )
         else:
-            assert 0. < args.threshold < 1., "Threshold must be between 0 and 1."
+            assert 0.0 < args.threshold < 1.0, "Threshold must be between 0 and 1."
             threshold = tf.constant(args.threshold)
 
         logger.info("Threshold: %f", threshold)
         logger.info("Pack the representations...")
-        nucleotide_stream = pack_tensor(threshold, BatchMultiChannelsJpegDNA.oligo_length, y_shape, z)
+        nucleotide_stream = pack_tensor(
+            threshold, BatchMultiChannelsJpegDNA.oligo_length, y_shape, z_strings
+        )
 
         logger.info("Saving the compressed data to %s", args.io.output)
 
@@ -298,8 +313,38 @@ def compress(model, args):
         with open(os.path.join(args.io.output, name + ".dna"), "w+") as f:
             f.write(nucleotide_stream)
 
-        return 
+        return
 
+
+def decompress(model, args):
+    """Decompress the dataset"""
+    global ds
+
+    files = pc_io.get_files(args.io.input)
+
+    for fname in tqdm(files):
+        name = fname.split("/")[-1].split(".")[0]
+        with open(fname, "r") as fd:
+            nucleotide_stream = fd.read()
+
+        global threshold, oligo_length, y_shape, z_strings
+        threshold, _, y_shape, z_strings = unpack_tensor(
+            nucleotide_stream,
+        )
+
+        # Reconstruct the point clouds.
+        logger.info("Reconstructing the point clouds...")
+        global x_hat
+        x_hat = model.decompress(tf.expand_dims(z_strings, 0), y_shape).numpy()[0]
+
+        pa = np.argwhere(x_hat[..., 0] > threshold.numpy()).astype(np.float32)
+
+        # Save the reconstructed point clouds.
+        os.makedirs(args.io.output, exist_ok=True)
+
+        pc_io.write_df(args.io.output.rstrip("/*") + f"/{name}.ply", pc_io.pa_to_df(pa))
+
+        return
 
 
 @hydra.main(config_path="config/main", config_name="default.yaml", version_base="1.2")
@@ -316,8 +361,6 @@ def main(cfg):
     if args.task == "compress":
         compress(model, args.compress)
     elif args.task == "decompress":
-        # TODO: Implement decompression
-        raise NotImplementedError
         decompress(model, args.decompress)
 
 

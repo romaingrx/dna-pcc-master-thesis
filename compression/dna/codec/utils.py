@@ -3,7 +3,7 @@
 """
 @author : Romain Graux
 @date : 2022 May 13, 11:24:49
-@last modified : 2022 May 18, 16:45:15
+@last modified : 2022 May 23, 18:28:05
 """
 
 import logging
@@ -16,19 +16,19 @@ from src import pc_io, processing
 logger = logging.getLogger(__name__)
 
 
-def dir_to_ds(input_dir, resolution, channels_last):
+def pc_dir_to_ds(input_dir, resolution, channels_last):
     """Load all point clouds from the input_dir and transform them to a tensorflow dataset."""
     # Load the point clouds
     files = pc_io.get_files(input_dir)
     # Load the blocks from the files.
     p_min, p_max, dense_tensor_shape = pc_io.get_shape_data(resolution, channels_last)
-    points = pc_io.load_points(files, p_min, p_max)
+    raw_points = pc_io.load_points(files, p_min, p_max)
 
     with tf.device("CPU"):
         logger.info("Transforming the point clouds to tensors")
         points = [
             processing.pc_to_tf(pc, dense_tensor_shape, channels_last)
-            for pc in tqdm(points)
+            for pc in tqdm(raw_points)
         ]
 
         # Convert the sparse tensors to dense tensors.
@@ -36,7 +36,9 @@ def dir_to_ds(input_dir, resolution, channels_last):
         points = [processing.process_x(pc, dense_tensor_shape) for pc in tqdm(points)]
 
     # Create a tensorflow dataset from the point clouds.
-    ds = tf.data.Dataset.from_tensor_slices({"input": points, "fname": files})
+    ds = tf.data.Dataset.from_tensor_slices(
+        {"input": points, "fname": files, "pc": tf.ragged.constant(raw_points)}
+    )
     return ds
 
 
