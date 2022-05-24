@@ -3,7 +3,7 @@
 """
 @author : Romain Graux
 @date : 2022 May 22, 13:26:00
-@last modified : 2022 May 22, 13:46:10
+@last modified : 2022 May 24, 11:55:24
 """
 
 from omegaconf import OmegaConf
@@ -51,3 +51,29 @@ def dict2namespace(config: dict, allow_missing:bool=False, parent_keys:List[str]
         elif isinstance(value, dict):
             namespace[key] = dict2namespace(value, allow_missing, parent_keys+[key])
     return namespace
+
+def encode_wrapper(encode_fn):
+    """Wrap the encode function to have the right shape for the encoder."""
+    def inner_fn(self, x):
+        """Reshape the input to have the right shape for the encoder."""
+        # Input shape: (batch, b1, b2, b3, channels)
+        assert (
+                len(x.shape) == 5
+                ), "x must be a 5D tensor (batch, b1, b2, b3, channels)"
+
+        input_x = self.reshape_input_encode(x)
+        res = encode_fn(self, input_x)
+        return self.reshape_output_encode(res)
+    return inner_fn
+
+def decode_wrapper(decode_fn):
+    """Wrap the decode function to have the right shape for the decoder."""
+    def inner_fn(self, x, shape):
+        """Reshape the input to have the right shape for the decoder."""
+        # Output shape: (batch, b1, b2, b3, channels)
+        assert len(shape) == 4, "shape must be a 3D tensor (b1, b2, b3, channels)"
+
+        input_x = self.reshape_input_decoder(x, shape)
+        res = decode_fn(self, input_x, shape)
+        return self.reshape_output_decode(res, shape)
+    return inner_fn

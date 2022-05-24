@@ -7,3 +7,4 @@ transfer_learning_model: "${hydra:runtime.cwd}/models/pcc-geo-slicing/a0.6_res_t
 quantize: # The minimum and maximum value of analysis blocks (y) used to compute the quantization
     min: -12.0
     max: 12.0
+codec: 'BatchSingleChannelJpegDNA' # The codec to encode into dna strands, choice between BatchMultiChannelsJpegDNA and BatchSingleChannelJpegDNA
