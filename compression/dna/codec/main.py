@@ -3,7 +3,7 @@
 """
 @author : Romain Graux
 @date : 2022 May 10, 11:15:58
-@last modified : 2022 May 24, 19:46:48
+@last modified : 2022 May 25, 14:53:59
 """
 
 from functools import partial
@@ -439,8 +439,18 @@ def decompress(model, args):
 @hydra.main(config_path="config/main", config_name="default.yaml", version_base="1.2")
 def main(cfg):
     global args, model
-    args = omegaconf2namespace(cfg)
+    args = omegaconf2namespace(cfg, allow_missing=False)
 
+    # If gpu needed, set the memory growth option so it does not allocate all the memory.
+    if args.gpu:
+        gpus = tf.config.list_physical_devices("GPU")
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+    # Otherwise, set the CPU as the default device.
+    else:
+        os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+
+    tasks = ["compress", "decompress"]
     if args.task not in ["compress", "decompress", "play"]:
         raise ValueError(f"Unknown task: {args.task}, choose between {tasks}")
 
@@ -456,8 +466,5 @@ def main(cfg):
 
 if __name__ == "__main__":
     # Set the memory growth option so it doesn't allocate all GPUs memory.
-    gpus = tf.config.list_physical_devices("GPU")
-    for gpu in gpus:
-        tf.config.experimental.set_memory_growth(gpu, True)
 
     main()

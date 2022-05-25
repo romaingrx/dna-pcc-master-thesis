@@ -47,7 +47,7 @@ def dict2namespace(config: dict, allow_missing:bool=False, parent_keys:List[str]
     namespace = Namespace(config)
     for key, value in config.items():
         if value == "???":
-            raise ValueError(f"Missing value for {'.'.join(parent_keys+[key])}")
+            raise ValueError(f"Missing value for `{'.'.join(parent_keys+[key])}`")
         elif isinstance(value, dict):
             namespace[key] = dict2namespace(value, allow_missing, parent_keys+[key])
     return namespace
