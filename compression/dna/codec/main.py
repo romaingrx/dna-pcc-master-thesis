@@ -3,7 +3,7 @@
 """
 @author : Romain Graux
 @date : 2022 May 10, 11:15:58
-@last modified : 2022 May 24, 11:56:58
+@last modified : 2022 May 24, 19:46:48
 """
 
 from functools import partial
@@ -23,8 +23,10 @@ from helpers import omegaconf2namespace, encode_wrapper, decode_wrapper
 from layers import AnalysisTransform, SynthesisTransform
 from src import pc_io
 from src.compression_utilities import (
-        pack_tensor,
-        unpack_tensor,
+        pack_tensor_multi,
+        unpack_tensor_multi,
+        pack_tensor_single,
+        unpack_tensor_single,
         compute_optimal_threshold,
         )
 from src.focal_loss import focal_loss
@@ -43,13 +45,14 @@ def parse_codec(name:str, alpha:float):
     """Parse the codec name and the alpha value."""
 
     mapping = {
-            "BatchSingleChannelJpegDNA" : partial(BatchSingleChannelJpegDNA, alpha=alpha),
-            "BatchMultiChannelsJpegDNA" : partial(BatchMultiChannelsJpegDNA, alpha=alpha),
+            "BatchSingleChannelJpegDNA" : (partial(BatchSingleChannelJpegDNA, alpha=alpha), pack_tensor_single, unpack_tensor_single),
+            "BatchMultiChannelsJpegDNA" : (partial(BatchMultiChannelsJpegDNA, alpha=alpha), pack_tensor_multi, unpack_tensor_multi)
             }
 
 
     try:
-        return mapping[name]()
+        cls, pack, unpack = mapping[name]
+        return cls(), pack, unpack
     except KeyError:
         raise ValueError(f"Unknown codec: {name}, please choose between {list(mapping.keys())}")
 
@@ -112,7 +115,7 @@ class BatchSingleChannelJpegDNA:
             return JpegDNA(alpha).decode(oligos.numpy().astype(str))
 
         f = partial(_decode_worker, alpha=self._alpha)
-        with Pool(min(len(x), os.cpu_count())) as p:
+        with Pool() as p:
             y = list(p.map(f, x))
 
         y = tf.convert_to_tensor(y)
@@ -143,7 +146,7 @@ class BatchMultiChannelsJpegDNA(BatchSingleChannelJpegDNA):
         n_batches, n_channels = x.shape[0], x.shape[3]
         indexes = list(product(range(n_batches), range(n_channels)))
         f = partial(_encode_worker, alpha=self._alpha)
-        with Pool(min(len(indexes), os.cpu_count())) as p:
+        with Pool() as p:
             y = list(p.map(f, [x[i, :, :, j] for i, j in indexes]))
 
         # Reshape the tensor to (batch, channels, nb_oligos)
@@ -190,7 +193,7 @@ class CompressionModel(tf.keras.Model):
 
         self.analysis_transform = AnalysisTransform(args.num_filters, args.latent_depth)
         self.synthesis_transform = SynthesisTransform(args.num_filters)
-        self.codec = parse_codec(args.codec, args.alpha)
+        self.codec, self.pack_tensor, self.unpack_tensor = parse_codec(args.codec, args.alpha)
 
         if args.transfer_learning_model is not None:
 
@@ -270,9 +273,6 @@ class CompressionModel(tf.keras.Model):
                 tf.cast(quantized_x, tf.quint8), *quantize_range
                 )
 
-        # Turn the images into blocks
-        x = tf.reshape(x, [batch_size, *shape])
-
         return x
 
     def compress(self, x):
@@ -295,8 +295,13 @@ class CompressionModel(tf.keras.Model):
         return z, shape, info
 
     def decompress(self, z, y_shape):
+        batch_size, *_ = z.shape
         # Build the decoder (synthesis) half of the hierarchical autoencoder.
         y_hat = self.dna_decoding(z, y_shape)
+
+        # Need to add the batch diemension if is equal to 1 because tf.quantize squeezes it
+        if batch_size == 1:
+            y_hat = tf.expand_dims(y_hat, 0)
 
         # Build the bottleneck
         x_hat = self.synthesis_transform(y_hat)
@@ -359,13 +364,14 @@ def compress(model, args):
             logger.info(f"Because compress.io.overwrite: skipping {out_fname}")
             continue
 
+        global z_strings, y_shape
         z, y_shape, _ = model.compress(tf.expand_dims(x, 0))
         z_strings = z[0]
 
         # Calculate the adaptive threshold.
         if args.threshold == "adaptive":
             logger.info("Calculating the adaptive threshold...")
-            threshold = compute_optimal_threshold(
+            threshold, pa = compute_optimal_threshold(
                     model,
                     z_strings,
                     y_shape,
@@ -374,14 +380,19 @@ def compress(model, args):
                     breakpt=150,
                     verbose=1,
                     )
+            if args.io.save_intermediate_results != "":
+                output_dir = os.path.join(args.io.save_intermediate_results, "x_hat")
+                os.makedirs(output_dir, exist_ok=True)
+                pc_io.write_df(output_dir + f"/{name}.ply", pc_io.pa_to_df(pa))
+
         else:
             assert 0.0 < args.threshold < 1.0, "Threshold must be between 0 and 1."
             threshold = tf.constant(args.threshold)
 
         logger.info("Threshold: %f", threshold)
         logger.info("Pack the representations...")
-        nucleotide_stream = pack_tensor(
-                threshold, BatchMultiChannelsJpegDNA.oligo_length, y_shape, z_strings
+        nucleotide_stream = model.pack_tensor(
+                threshold, model.codec.oligo_length, y_shape, z_strings
                 )
 
         logger.info("Saving the compressed data to %s", args.io.output)
@@ -409,7 +420,7 @@ def decompress(model, args):
         with open(fname, "r") as fd:
             nucleotide_stream = fd.read()
 
-        threshold, _, y_shape, z_strings = unpack_tensor(
+        threshold, _, y_shape, z_strings = model.unpack_tensor(
                 nucleotide_stream,
                 )
 

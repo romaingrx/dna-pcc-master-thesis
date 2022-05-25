@@ -1,7 +1,8 @@
 io:
-    input: "${hydra:runtime.cwd}/datasets/blocks_64_wooden" # The input directory to compress
+    input: "${hydra:runtime.cwd}/datasets/blocks_64" # The input directory to compress
     output: "${hydra:runtime.cwd}/results/compressed_dna_sequences" # The output directory for the compressed DNA sequences
     overwrite: false # If true, will compress even if the file already exists
+    save_intermediate_results: "${hydra:runtime.cwd}/results/intermediate_results" # If threshold is set to 'adaptive', will save the reconstructed point clouds
 blocks:
     resolution: 64 # The resolution of the blocks
     channels_last: true

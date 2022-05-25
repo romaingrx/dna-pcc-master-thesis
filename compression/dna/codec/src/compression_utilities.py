@@ -20,15 +20,15 @@ def bytes_to_nucleotides(bytestream):
     bitstream = bin(int.from_bytes(bytestream, byteorder="little")).lstrip("0b")
     if len(bitstream) % 8 != 0:
         bitstream = (
-            "0" * (8 - len(bitstream) % 8) + bitstream
-        )  # Pad with zeros to make it divisible by 8.
+                "0" * (8 - len(bitstream) % 8) + bitstream
+                )  # Pad with zeros to make it divisible by 8.
 
     return "".join(
-        [
-            {"00": "A", "01": "C", "10": "G", "11": "T"}[bitstream[i : i + 2]]
-            for i in range(0, len(bitstream), 2)
-        ]
-    )
+            [
+                {"00": "A", "01": "C", "10": "G", "11": "T"}[bitstream[i : i + 2]]
+                for i in range(0, len(bitstream), 2)
+                ]
+            )
 
 
 def nucleotides_to_bytes(nucleotides, bits_type=8):
@@ -41,23 +41,23 @@ def nucleotides_to_bytes(nucleotides, bits_type=8):
     Output: A bytestream.
     """
     bistream = "".join(
-        [
-            {"A": "00", "C": "01", "G": "10", "T": "11"}[nucleotide]
-            for nucleotide in nucleotides
-        ]
-    )
+            [
+                {"A": "00", "C": "01", "G": "10", "T": "11"}[nucleotide]
+                for nucleotide in nucleotides
+                ]
+            )
 
     length_bytes = (len(bistream) % bits_type != 0) + len(bistream) // bits_type
     bytestream = int(bistream, 2).to_bytes(length_bytes, byteorder="little")
     return bytestream
 
 
-def pack_tensor(
-    threshold: tf.float32,
-    oligo_length: tf.int32,
-    y_shape: tf.constant,
-    z_strings: tf.ragged.constant,
-) -> str:
+def pack_tensor_multi(
+        threshold: tf.float32,
+        oligo_length: tf.int32,
+        y_shape: tf.constant,
+        z_strings: tf.ragged.constant,
+        ) -> str:
     """
     Pack the tensor of nucleotides into a single nucelotide string.
 
@@ -80,24 +80,59 @@ def pack_tensor(
     oligo_length_string = bytes_to_nucleotides(bytes([oligo_length]))
     y_shape_string = bytes_to_nucleotides(bytes(y_shape.numpy().tolist()))
     z_length_strings = bytes_to_nucleotides(
-        bytes([len(z_string) for z_string in z_strings.numpy()])
-    )
+            bytes([len(z_string) for z_string in z_strings.numpy()])
+            )
 
     return (
-        threshold_string
-        + oligo_length_string
-        + y_shape_string
-        + z_length_strings
-        + "".join(tf.reshape(z_strings, (-1,)).numpy().astype(str))
-    )
+            threshold_string
+            + oligo_length_string
+            + y_shape_string
+            + z_length_strings
+            + "".join(tf.reshape(z_strings, (-1,)).numpy().astype(str))
+            )
+
+def pack_tensor_single(
+        threshold: tf.float32,
+        oligo_length: tf.int32,
+        y_shape: tf.constant,
+        z_strings: tf.ragged.constant,
+        ) -> str:
+    """
+    Pack the tensor of nucleotides into a single nucelotide string.
+
+    Parameters:
+        threshold: Threshold to transform the output of the NN into an occupancy map.
+        y_shape: Shape of the analyis tensor (b1, b2, b3, latent_depth).
+        z_strings: List of tensors of the latent DNA.
+
+    Returns:
+        A string of DNA nucleotides with structure:
+        [threshold, y_shape, *z_length, *z_strings]
+
+    Remarks:
+        All lengths are encoded on 1 byte, so the maximum length is 255.
+        It is possible to encode on several bytes if needed.
+    """
+
+    threshold_int = (np.round(threshold.numpy() * 100)).astype("uint8")
+    threshold_string = bytes_to_nucleotides(bytes([threshold_int]))
+    oligo_length_string = bytes_to_nucleotides(bytes([oligo_length]))
+    y_shape_string = bytes_to_nucleotides(bytes(y_shape.numpy().tolist()))
+
+    return (
+            threshold_string
+            + oligo_length_string
+            + y_shape_string
+            + "".join(tf.reshape(z_strings, (-1,)).numpy().astype(str))
+            )
 
 
-def unpack_tensor(nucelotidestream):
+def unpack_tensor_multi(nucleotidestream):
     """
     Unpack the tensor of nucleotides into a single nucelotide string.
 
     Parameters:
-        nucelotidestream: Nucelotide string to unpack.
+        nucleotidestream: Nucelotide string to unpack.
 
     Returns:
         A tuple of the threshold, y_shape, z_length, and z_strings.
@@ -105,26 +140,26 @@ def unpack_tensor(nucelotidestream):
 
     seeker = 0
 
-    threshold_string = nucelotidestream[seeker : seeker + 4]
+    threshold_string = nucleotidestream[seeker : seeker + 4]
     threshold_int = int.from_bytes(
-        nucleotides_to_bytes(threshold_string), byteorder="little"
-    )
+            nucleotides_to_bytes(threshold_string), byteorder="little"
+            )
     threshold = tf.constant(threshold_int / 100, dtype=tf.float32)
     seeker += 4
 
-    oligo_length_string = nucelotidestream[seeker : seeker + 4]
+    oligo_length_string = nucleotidestream[seeker : seeker + 4]
     oligo_length = int.from_bytes(
-        nucleotides_to_bytes(oligo_length_string), byteorder="little"
-    )
+            nucleotides_to_bytes(oligo_length_string), byteorder="little"
+            )
     seeker += 4
 
-    y_shape_string = nucelotidestream[seeker : seeker + 16]
+    y_shape_string = nucleotidestream[seeker : seeker + 16]
     _, _, _, latent_depth = y_shape = np.frombuffer(
-        nucleotides_to_bytes(y_shape_string), dtype=np.uint8
-    )
+            nucleotides_to_bytes(y_shape_string), dtype=np.uint8
+            )
     seeker += 16
 
-    z_length_strings = nucelotidestream[seeker : seeker + latent_depth * 4]
+    z_length_strings = nucleotidestream[seeker : seeker + latent_depth * 4]
     z_lengths = np.frombuffer(nucleotides_to_bytes(z_length_strings), dtype=np.uint8)
     seeker += latent_depth * 4
 
@@ -132,20 +167,63 @@ def unpack_tensor(nucelotidestream):
     for z_length in z_lengths:
         # The default oligo length is 200.
         z_string = [
-            nucelotidestream[
-                seeker + oligo_length * idx : seeker + oligo_length * (idx + 1)
-            ]
-            for idx in range(z_length)
-        ]
+                nucleotidestream[
+                    seeker + oligo_length * idx : seeker + oligo_length * (idx + 1)
+                    ]
+                for idx in range(z_length)
+                ]
         z_strings.append(z_string)
         seeker += z_length * oligo_length
 
     return (
-        tf.constant(threshold, dtype=tf.float32),
-        tf.constant(oligo_length, dtype=tf.int32),
-        tf.constant(y_shape, dtype=tf.int32),
-        tf.ragged.constant(z_strings, dtype=tf.string),
-    )
+            tf.constant(threshold, dtype=tf.float32),
+            tf.constant(oligo_length, dtype=tf.int32),
+            tf.constant(y_shape, dtype=tf.int32),
+            tf.ragged.constant(z_strings, dtype=tf.string),
+            )
+
+def unpack_tensor_single(nucleotidestream):
+    """
+    Unpack the tensor of nucleotides into a single nucelotide string.
+
+    Parameters:
+        nucleotidestream: Nucelotide string to unpack.
+
+    Returns:
+        A tuple of the threshold, y_shape, z_length, and z_strings.
+    """
+
+    seeker = 0
+
+    threshold_string = nucleotidestream[seeker : seeker + 4]
+    threshold_int = int.from_bytes(
+            nucleotides_to_bytes(threshold_string), byteorder="little"
+            )
+    threshold = tf.constant(threshold_int / 100, dtype=tf.float32)
+    seeker += 4
+
+    oligo_length_string = nucleotidestream[seeker : seeker + 4]
+    oligo_length = int.from_bytes(
+            nucleotides_to_bytes(oligo_length_string), byteorder="little"
+            )
+    seeker += 4
+
+    y_shape_string = nucleotidestream[seeker : seeker + 16]
+    _, _, _, latent_depth = y_shape = np.frombuffer(
+            nucleotides_to_bytes(y_shape_string), dtype=np.uint8
+            )
+    seeker += 16
+
+    # The default oligo length is 200.
+    assert (len(nucleotidestream) - seeker) % oligo_length == 0, "Should be a multiple of oligo length"
+    z_string = [nucleotidestream[idx:idx+oligo_length] for idx in range(seeker, len(nucleotidestream), oligo_length)]
+
+    return (
+            tf.constant(threshold, dtype=tf.float32),
+            tf.constant(oligo_length, dtype=tf.int32),
+            tf.constant(y_shape, dtype=tf.int32),
+            tf.constant(z_string, dtype=tf.string),
+            )
 
 
 def po2po(block1_pc, block2_pc):
@@ -176,8 +254,8 @@ def po2po(block1_pc, block2_pc):
 
 
 def compute_optimal_threshold(
-    model, z_strings, y_shape, pc, delta_t=0.01, breakpt=50, verbose=1
-):
+        model, z_strings, y_shape, pc, delta_t=0.01, breakpt=50, verbose=1
+        ):
     """
     Computes the optimal threshold used to convert the output of the
     neural network into an occupancy map.
@@ -195,10 +273,10 @@ def compute_optimal_threshold(
     """
 
     assert verbose in {
-        0,
-        1,
-        2,
-    }, "Verbose should be either 0(no printing), 1 (partial printing) or 2 (full printing)"
+            0,
+            1,
+            2,
+            }, "Verbose should be either 0(no printing), 1 (partial printing) or 2 (full printing)"
     # Decompress the latent tensor.
     x_hat = tf.squeeze(model.decompress(tf.expand_dims(z_strings, 0), y_shape))
     x_hat = x_hat.numpy()
@@ -206,8 +284,8 @@ def compute_optimal_threshold(
     # Prepare parameters for search.
     num_not_improve = 0
     thresholds = tf.linspace(
-        delta_t, 1, tf.cast(tf.math.round(1 / delta_t), dtype=tf.int64)
-    )
+            delta_t, 1, tf.cast(tf.math.round(1 / delta_t), dtype=tf.int64)
+            )
     min_mse = 1e10
     best_threshold = tf.constant(0)
 
@@ -229,8 +307,8 @@ def compute_optimal_threshold(
             test_mse = po2po(pc, mean_pt)
             if verbose == 2:
                 print(
-                    f"The D1 error for the mean point is {test_mse}, against {min_mse} for the current best threshold."
-                )
+                        f"The D1 error for the mean point is {test_mse}, against {min_mse} for the current best threshold."
+                        )
 
             # If the mean point is better than current threshold,
             # return an empty block (threshold = 1).
@@ -243,7 +321,7 @@ def compute_optimal_threshold(
                 best_threshold = tf.constant(0.5)
             if verbose >= 1:
                 print(f" Best threshold found: {best_threshold.numpy()}")
-            return best_threshold
+            return best_threshold, np.argwhere(x_hat > best_threshold).astype("float32")
 
         # Update the current best threshold if necessary.
         if mse < min_mse:
@@ -252,47 +330,75 @@ def compute_optimal_threshold(
             num_not_improve = 0
             if verbose == 2:
                 print(
-                    f"D1 mse value of {min_mse} found at t = {best_threshold.numpy()}"
-                )
+                        f"D1 mse value of {min_mse} found at t = {best_threshold.numpy()}"
+                        )
         else:
             num_not_improve += 1
             if verbose == 2:
                 print(f"Not a better threshold mse = {mse} at t = {threshold.numpy()}")
             if num_not_improve == breakpt:
-                return best_threshold
+                return best_threshold, np.argwhere(x_hat > best_threshold).astype("float32")
 
 
 if __name__ == "__main__":
     _, _, _, latent_depth = y_shape = tf.constant([64, 64, 64, 160])
     oligo_length = np.random.randint(10, 255)
     z_strings = tf.ragged.constant(
-        [
             [
-                "".join(np.random.choice(["A", "C", "G", "T"], size=(oligo_length,)))
-                for _ in range(np.random.randint(2, 10))
-            ]
-            for _ in range(latent_depth)
-        ]
-    )
+                [
+                    "".join(np.random.choice(["A", "C", "G", "T"], size=(oligo_length,)))
+                    for _ in range(np.random.randint(2, 10))
+                    ]
+                for _ in range(latent_depth)
+                ]
+            )
     threshold = (
-        tf.cast(tf.random.uniform((1,), 0, 100, dtype=tf.int32), tf.float32) / 100.0
-    )[0]
+            tf.cast(tf.random.uniform((1,), 0, 100, dtype=tf.int32), tf.float32) / 100.0
+            )[0]
 
-    packed = pack_tensor(threshold, oligo_length, y_shape, z_strings)
+    packed = pack_tensor_multi(threshold, oligo_length, y_shape, z_strings)
     (
-        unpacked_threshold,
-        unpacked_oligo_length,
-        unpacked_y_shape,
-        unpacked_z_strings,
-    ) = unpack_tensor(packed)
+            unpacked_threshold,
+            unpacked_oligo_length,
+            unpacked_y_shape,
+            unpacked_z_strings,
+            ) = unpack_tensor_multi(packed)
 
     assert unpacked_threshold == threshold
     assert unpacked_oligo_length == oligo_length
     assert (y_shape == unpacked_y_shape).numpy().all()
     assert (
-        (z_strings.bounding_shape() == unpacked_z_strings.bounding_shape())
-        .numpy()
-        .all()
-    )
+            (z_strings.bounding_shape() == unpacked_z_strings.bounding_shape())
+            .numpy()
+            .all()
+            )
     assert z_strings.to_list() == unpacked_z_strings.to_list()
+
+    _, _, _, latent_depth = y_shape = tf.constant([8, 8, 8, 160])
+    oligo_length = np.random.randint(10, 255)
+    z_strings = tf.constant(
+            [
+                "".join(np.random.choice(["A", "C", "G", "T"], size=(oligo_length,)))
+                for _ in range(np.random.randint(2, 10))
+                ]
+            )
+    threshold = (
+            tf.cast(tf.random.uniform((1,), 0, 100, dtype=tf.int32), tf.float32) / 100.0
+            )[0]
+
+    packed = pack_tensor_single(threshold, oligo_length, y_shape, z_strings)
+
+    (
+            unpacked_threshold,
+            unpacked_oligo_length,
+            unpacked_y_shape,
+            unpacked_z_strings,
+            ) = unpack_tensor_single(packed)
+
+    assert unpacked_threshold == threshold
+    assert unpacked_oligo_length == oligo_length
+    assert (y_shape == unpacked_y_shape).numpy().all()
+    assert (z_strings.shape == unpacked_z_strings.shape)
+    assert (z_strings == unpacked_z_strings).numpy().all()
+
     print("All tests passed.")

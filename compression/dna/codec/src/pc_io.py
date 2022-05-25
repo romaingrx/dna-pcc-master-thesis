@@ -51,17 +51,17 @@ def df_to_pc(df, p_min, p_max):
 def pa_to_df(points):
     if len(points) == 0:
         df = pd.DataFrame(
-            data={
-                'x': [],
-                'y': [],
-                'z': []})
+                data={
+                    'x': [],
+                    'y': [],
+                    'z': []})
     else:
         df = pd.DataFrame(
-            data={
-                'x': points[:, 0],
-                'y': points[:, 1],
-                'z': points[:, 2]}, dtype=np.float32)
-    
+                data={
+                    'x': points[:, 0],
+                    'y': points[:, 1],
+                    'z': points[:, 2]}, dtype=np.float32)
+
     return df
 
 
@@ -99,8 +99,6 @@ def get_shape_data(resolution, channels_last):
 def get_files(input_glob):
     input_glob = input_glob.rstrip('/*') + '/*'
     return np.array(glob(input_glob, recursive=True))
-
-
 
 
 def load_points(files, p_min, p_max, batch_size=32):

@@ -3,7 +3,7 @@
 """
 @author : Romain Graux
 @date : 2022 May 13, 11:24:49
-@last modified : 2022 May 23, 18:28:05
+@last modified : 2022 May 24, 16:30:31
 """
 
 import logging
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 def pc_dir_to_ds(input_dir, resolution, channels_last):
     """Load all point clouds from the input_dir and transform them to a tensorflow dataset."""
     # Load the point clouds
-    files = pc_io.get_files(input_dir)
+    files = sorted(pc_io.get_files(input_dir))
     # Load the blocks from the files.
     p_min, p_max, dense_tensor_shape = pc_io.get_shape_data(resolution, channels_last)
     raw_points = pc_io.load_points(files, p_min, p_max)
@@ -46,10 +46,7 @@ def number_of_nucleotides(x):
     """Return the number of nucleotides in the latent space."""
     # In general all oligos are the same length (200) but it is preferable to compute the number of nucleotides with the length of each one.
     return tf.reduce_sum(
-        [
-            [[len(oligo.numpy()) for oligo in channel] for channel in batch]
-            for batch in x
-        ]
+            [len(elem) for elem in np.reshape(x.numpy(), (-1,))]
     )
 
 

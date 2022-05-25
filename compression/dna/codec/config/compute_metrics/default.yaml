@@ -1,13 +1,15 @@
 io:
-    x: ${hydra:runtime.cwd}/saved_results/x
-    z: ${hydra:runtime.cwd}/saved_results/z
-    x_hat: ${hydra:runtime.cwd}/saved_results/x_hat
+    x: ${hydra:runtime.cwd}/datasets/blocks_64
+    z: ${hydra:runtime.cwd}/results/compressed_dna_sequences
+    x_hat: ${hydra:runtime.cwd}/results/intermediate_results/x_hat
     csv: ${hydra:runtime.cwd}/metrics.csv
+blocks:
+  resolution: 64
+  channel_last: true
 metrics:
-    - nucleotide_rate
+    - number_of_nucleotides
     - num_voxels
     - num_occupied_voxels
-    - focal_loss:
-        alpha: 0.6
-        gamma: 2.0
+    - nucleotide_rate
+    - point_to_point_D1
 
