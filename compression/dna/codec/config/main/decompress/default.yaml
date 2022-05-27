@@ -1,0 +1,7 @@
+io:
+    input: "${results_dir}/compressed_dna_sequences" # The input directory for the compressed DNA sequences
+    output: "${results_dir}/reconstrcuted_point_clouds" # The output directory for the reconstructed point clouds
+    overwrite: false # If true, will reconstruct even if the file already exists
+blocks:
+    resolution: 64 # The resolution of the blocks
+    channels_last: true

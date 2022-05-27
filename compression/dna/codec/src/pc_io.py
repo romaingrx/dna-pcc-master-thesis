@@ -51,17 +51,17 @@ def df_to_pc(df, p_min, p_max):
 def pa_to_df(points):
     if len(points) == 0:
         df = pd.DataFrame(
-            data={
-                'x': [],
-                'y': [],
-                'z': []})
+                data={
+                    'x': [],
+                    'y': [],
+                    'z': []})
     else:
         df = pd.DataFrame(
-            data={
-                'x': points[:, 0],
-                'y': points[:, 1],
-                'z': points[:, 2]}, dtype=np.float32)
-    
+                data={
+                    'x': points[:, 0],
+                    'y': points[:, 1],
+                    'z': points[:, 2]}, dtype=np.float32)
+
     return df
 
 
@@ -97,16 +97,16 @@ def get_shape_data(resolution, channels_last):
 
 
 def get_files(input_glob):
-    logger.info(f"Loading files from {input_glob}")
+    input_glob = input_glob.rstrip('/*') + '/*'
     return np.array(glob(input_glob, recursive=True))
-
-
-def load_points_func(x, p_min, p_max):
-    return load_pc(x, p_min, p_max).points
 
 
 def load_points(files, p_min, p_max, batch_size=32):
     files_len = len(files)
+
+    global load_points_func
+    def load_points_func(x, p_min, p_max):
+        return load_pc(x, p_min, p_max).points
 
     with multiprocessing.Pool() as p:
         logger.info('Loading PCs into memory (parallel reading)')
@@ -114,3 +114,4 @@ def load_points(files, p_min, p_max, batch_size=32):
         points = list(tqdm(p.imap(f, files, batch_size), total=files_len))
 
     return np.array(points, dtype=object)
+

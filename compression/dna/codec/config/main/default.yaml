@@ -1,0 +1,13 @@
+task: ??? # Choice between 'compress' and 'decompress'
+experiment: ??? # The transfer model name if needed, ex: a0.6_res_t64_Slice_cond_160-10_1750
+
+results_dir: "${hydra:runtime.cwd}/results/${experiment}"
+models_dir: "${hydra:runtime.cwd}/models"
+datasets_dir: "${hydra:runtime.cwd}/datasets"
+gpu: false
+
+defaults:
+    - architecture: default
+    - simulator: default
+    - compress: default
+    - decompress: default
