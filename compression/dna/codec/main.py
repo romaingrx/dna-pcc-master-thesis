@@ -3,7 +3,7 @@
 """
 @author : Romain Graux
 @date : 2022 May 10, 11:15:58
-@last modified : 2022 May 27, 11:42:08
+@last modified : 2022 May 27, 11:42:14
 """
 
 from functools import partial
@@ -359,6 +359,8 @@ def compress(model, args):
                     "`threshold` is not set to `adaptive` so the intermediate ",
                     "results will not be saved."
                     )
+    validate_args(args)
+
 
     # Create a tensorflow dataset from the point clouds.
     ds = pc_dir_to_ds(

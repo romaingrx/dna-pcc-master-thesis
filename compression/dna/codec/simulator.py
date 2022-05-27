@@ -3,7 +3,7 @@
 """
 @author : Romain Graux
 @date : 2022 Mar 30, 21:59:48
-@last modified : 2022 May 18, 18:09:12
+@last modified : 2022 May 22, 13:35:54
 """
 
 import requests
@@ -18,29 +18,7 @@ from multiprocessing import cpu_count
 
 from typing import Union, Generator, Iterable, List, Tuple, Dict, Any
 
-
-class AttrDict(dict):
-    __getattr__ = dict.__getitem__
-    __setattr__ = dict.__setitem__
-
-    def __init__(self, data, *args, **kwargs):
-        if kwargs.pop("_recursively", True):
-            super().__init__(AttrDict._map(data), *args, **kwargs)
-        else:
-            super().__init__(data, *args, **kwargs)
-
-    @classmethod
-    def _map(cls, data: Any) -> Union[Dict, Any]:
-        """Recursively convert all dicts to AttrDict"""
-        if type(data) not in (dict, list, tuple):
-            return data
-        elif type(data) is list:
-            return [cls._map(item) for item in data]
-        elif type(data) is tuple:
-            return tuple(cls._map(item) for item in data)
-        return AttrDict(
-            {key: cls._map(value) for key, value in data.items()}, _recursively=False
-        )
+from helpers import Namespace
 
 
 class MESAResponse:
@@ -50,9 +28,9 @@ class MESAResponse:
 
     @property
     @lru_cache(maxsize=1)
-    def _json(self) -> AttrDict:
+    def _json(self) -> Namespace:
         """Lazy load json"""
-        return AttrDict(self._response.json())
+        return Namespace(self._response.json())
 
     @property
     @lru_cache(maxsize=1)
@@ -139,7 +117,7 @@ class MESASimulator:
             else MESAResponse(responses[0])
         )
 
-@hydra.main(config_path="config/mesa", config_name="default.yaml")
+@hydra.main(config_path="config/mesa", config_name="default.yaml", version_base="1.2")
 def main(config: dict) -> None:
     global mesa, conf, y, sim_n, z
     conf = config
