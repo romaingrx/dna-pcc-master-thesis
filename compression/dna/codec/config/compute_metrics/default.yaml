@@ -1,8 +1,10 @@
+experiment: ???
+
 io:
     x: ${hydra:runtime.cwd}/datasets/blocks_64
-    z: ${hydra:runtime.cwd}/results/compressed_dna_sequences
-    x_hat: ${hydra:runtime.cwd}/results/intermediate_results/x_hat
-    csv: ${hydra:runtime.cwd}/metrics.csv
+    z: ${hydra:runtime.cwd}/results/${experiment}/compressed_dna_sequences
+    x_hat: ${hydra:runtime.cwd}/results/${experiment}/intermediate_results/x_hat
+    csv: ${hydra:runtime.cwd}/results/${experiment}/metrics.csv
 blocks:
   resolution: 64
   channel_last: true

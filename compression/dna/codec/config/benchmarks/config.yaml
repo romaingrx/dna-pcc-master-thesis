@@ -1,0 +1,16 @@
+task: ???
+experiment: "a0.6_res_t64_Slice_cond_160-10_1000"
+models_dir: "${hydra:runtime.cwd}/models"
+
+io:
+  x: "${hydra:runtime.cwd}/datasets/blocks_64"
+  y: "${hydra:runtime.cwd}/results/${experiment}/intermediate_results/y"
+  y_hat: "${hydra:runtime.cwd}/results/${experiment}/intermediate_results/y_hat"
+  x_hat: "${hydra:runtime.cwd}/results/${experiment}/intermediate_results/x_hat"
+
+blocks:
+  resolution: 64
+  channel_last: true
+
+defaults:
+  - architecture: default.yaml

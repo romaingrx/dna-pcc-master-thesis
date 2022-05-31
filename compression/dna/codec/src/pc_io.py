@@ -71,10 +71,10 @@ def pc_to_df(pc):
 
 
 def load_pc(path, p_min, p_max):
-    logger.debug(f"Loading PC {path}")
+    # logger.debug(f"Loading PC {path}")
     pc = PyntCloud.from_file(path)
     ret = df_to_pc(pc.points, p_min, p_max)
-    logger.debug(f"Loaded PC {path}")
+    # logger.debug(f"Loaded PC {path}")
     return ret
 
 
@@ -114,4 +114,3 @@ def load_points(files, p_min, p_max, batch_size=32):
         points = list(tqdm(p.imap(f, files, batch_size), total=files_len))
 
     return np.array(points, dtype=object)
-

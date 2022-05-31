@@ -69,6 +69,23 @@ def process_x(x, dense_tensor_shape):
     x = tf.cast(x, tf.float32)
 
     return x
+
+def pc_to_occupancy_grid(points, resolution, channel_last):
+    """
+    Creates a dense occupancy grid from a point cloud representation (Nx3 values)
+
+    Parameters:
+        points: Points loaded using the 'load_pc' function.
+        resolution: Resolution of the occupancy grid.
+        channel_last: True if the channel dimension is the last one,
+                        else False.
+                                          
+    Output: A dense occupancy grid.
+    """
+    *_, dense_tensor_shape = pc_io.get_shape_data(resolution, channel_last)
+    sparse_occupancy_grid = pc_to_tf(points, dense_tensor_shape, channel_last)
+    occupancy_grid = process_x(sparse_occupancy_grid, dense_tensor_shape)
+    return occupancy_grid
         
 def create_dataset(features, dense_tensor_shape, args, repeat=True):
     """
