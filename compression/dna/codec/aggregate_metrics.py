@@ -3,7 +3,7 @@
 """
 @author : Romain Graux
 @date : 2022 May 31, 18:07:48
-@last modified : 2022 May 31, 18:41:50
+@last modified : 2022 May 31, 18:52:51
 """
 
 import os
@@ -18,7 +18,7 @@ def gather_df_metrics(fname, aggregations):
     df = pd.read_csv(fname)
     df['point_cloud_name'] = df['name'].apply(lambda x: x.split('_')[0])
     aggregated = df.groupby('point_cloud_name').agg(aggregations)
-    return aggregated
+    return aggregated.reset_index()
 
 @hydra.main(config_path="config/aggregate_metrics", config_name="default.yaml")
 def main(cfg):
@@ -29,7 +29,7 @@ def main(cfg):
         fname = os.path.join(args.io.experiences_dir, experience, 'metrics.csv')
         if os.path.exists(fname):
             aggregated = gather_df_metrics(fname, args.aggregation_functions)
-            aggregated['experience'] = experience
+            aggregated.insert(0, 'experience', experience)
             global_df = global_df.append(aggregated)
     global_df.to_csv(args.io.output_file, index=False)
 
