@@ -3,7 +3,7 @@
 """
 @author : Romain Graux
 @date : 2022 May 13, 15:47:09
-@last modified : 2022 May 29, 18:35:38
+@last modified : 2022 May 29, 18:35:42
 """
 
 import os
@@ -117,10 +117,11 @@ def quantization_tables(args):
         return np.mean(np.power(x - reconstructed, 2)), len(np.reshape(oligos, (-1,)))
 
     inp = np.random.randint(0, 255, size=(64, 64))
+    ones_block = np.ones((8, 8))
 
     print(f'MSE with default parameters: {encode_decode_mse(inp)}')
 
-    print(f'MSE with ones: {encode_decode_mse(inp, gammas=np.ones((8, 8)), gammas_chroma=np.ones((8, 8)))}')
+    print(f'MSE with ones: {encode_decode_mse(inp, gammas=ones_block, gammas_chroma=ones_block)}')
 
 
 
