@@ -1,0 +1,16 @@
+experiment: ???
+
+blocks:
+  resolution: 128
+  channel_last: true
+io:
+    x: ${hydra:runtime.cwd}/datasets/blocks_${blocks.resolution}
+    z: ${hydra:runtime.cwd}/results/${experiment}/compressed_blocks
+    x_hat: ${hydra:runtime.cwd}/results/${experiment}/reconstruct_blocks
+    csv: ${hydra:runtime.cwd}/results/${experiment}/metrics.csv
+metrics:
+    - num_voxels
+    - num_occupied_voxels
+    - bitrate
+    - point_to_point_D1
+
