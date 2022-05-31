@@ -1,0 +1,9 @@
+io:
+  experiences_dir: ${hydra:runtime.cwd}/results
+  output_file: ${io.experiences_dir}/aggregated_metrics.csv
+aggregation_functions:
+  number_of_nucleotides: sum
+  num_voxels: sum
+  num_occupied_voxels: sum
+  nucleotide_rate: mean
+  point_to_point_D1: mean

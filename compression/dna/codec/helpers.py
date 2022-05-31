@@ -13,7 +13,7 @@ class Namespace(dict):
     __getattr__ = dict.__getitem__
     __setattr__ = dict.__setitem__
 
-    def __init__(self, data, *args, **kwargs):
+    def __init__(self, data={}, *args, **kwargs):
         if kwargs.pop("_recursively", True):
             super().__init__(Namespace._map(data), *args, **kwargs)
         else:
