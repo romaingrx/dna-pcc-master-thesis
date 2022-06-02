@@ -3,7 +3,7 @@
 """
 @author : Romain Graux
 @date : 2022 May 13, 15:47:09
-@last modified : 2022 May 29, 18:35:42
+@last modified : 2022 June 02, 15:19:29
 """
 
 import os
@@ -16,13 +16,15 @@ from omegaconf import OmegaConf
 from helpers import omegaconf2namespace, Namespace
 
 import numpy as np
+import tensorflow as tf
 from pyntcloud import PyntCloud
 from multiprocessing import Pool
 from jpegdna.codecs import JpegDNA
 
 from main import CompressionModel
-from src.pc_io import load_pc, get_shape_data
+from src.pc_io import load_pc, get_shape_data, write_df, pa_to_df
 from src.processing import pc_to_occupancy_grid
+from utils import pc_dir_to_ds
 
 
 extract_name = lambda fname: fname.split('/')[-1].split('.')[0]
@@ -85,20 +87,30 @@ def play(args):
     """
     pass
 
-def bypass_all(args):
+def bypass_dna(args):
     """
     Bypass the compression into oligos and directly reconstruct the point clouds
     """
-    global x, model, occupancy_grids
-    exception = list(args.io.keys())
-    exception.remove('x')
-
-    with Pool() as pool:
-        point_clouds = [pc for pc in load_io_files(args, exception=exception)]
-        f = partial(pc_to_occupancy_grid, resolution=args.blocks.resolution, channel_last=args.blocks.channel_last)
-        occupancy_grids = np.array(list(tqdm(pool.imap(f, point_clouds), total=len(point_clouds), desc='Occupancy grid')))
+    ds = pc_dir_to_ds(
+            args.io.x,
+            args.blocks.resolution,
+            args.blocks.channel_last,
+            )
 
     model = CompressionModel(args.architecture)
+
+    os.makedirs("bypass_dna", exist_ok=True)
+
+    for data in tqdm(ds, total=ds.cardinality().numpy()):
+        x = data["input"]
+        name = data["fname"].numpy().decode("UTF-8").split("/")[-1].split(".")[0]
+
+        y = model.analysis_transform(tf.expand_dims(x, 0))
+        x_hat = model.synthesis_transform(y)[0]
+
+
+        pa = np.argwhere(x_hat.numpy() > 0.5).astype("float32")
+        write_df(f"./bypass_dna/{name}.ply", pa_to_df(pa))
 
 def quantization_tables(args):
     """
@@ -139,7 +151,7 @@ def main(cfg: OmegaConf) -> None:
     global args
     args = omegaconf2namespace(cfg)
 
-    tasks = ["bypass_all", "quantization_tables", "play"]
+    tasks = ["bypass_dna", "quantization_tables", "play"]
     if args.task not in tasks:
         raise ValueError(f"Task {args.task} not supported, please choose between {tasks}")
     
