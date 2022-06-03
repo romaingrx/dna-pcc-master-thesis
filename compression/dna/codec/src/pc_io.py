@@ -114,3 +114,8 @@ def load_points(files, p_min, p_max, batch_size=32):
         points = list(tqdm(p.imap(f, files, batch_size), total=files_len))
 
     return np.array(points, dtype=object)
+
+def write_dna_stream(stream, path):
+    with open(path, 'w') as f:
+        for x in stream:
+            f.write(x)

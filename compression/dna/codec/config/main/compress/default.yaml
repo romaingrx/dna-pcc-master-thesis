@@ -7,3 +7,5 @@ blocks:
     resolution: 64 # The resolution of the blocks
     channels_last: true
 threshold: "adaptive" # Threshold to compute the occupancy map (can be a float between 0 and 1 or 'adaptive' to compute the best threshold)
+apply_dct: false # In the JpegDNA codec, use the dct or not
+num_workers: 20

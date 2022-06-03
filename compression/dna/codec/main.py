@@ -3,7 +3,7 @@
 """
 @author : Romain Graux
 @date : 2022 May 10, 11:15:58
-@last modified : 2022 May 27, 11:42:14
+@last modified : 2022 June 03, 22:22:01
 """
 
 from functools import partial
@@ -16,6 +16,8 @@ import os
 import tensorflow as tf
 import tensorflow_compression as tfc
 from jpegdna.codecs import JpegDNA
+
+import ray
 from ray.util.multiprocessing import Pool
 
 
@@ -34,8 +36,8 @@ from utils import (
         pc_dir_to_ds,
         number_of_nucleotides,
         )
-
-# from codec import BatchMultiChannelsJpegDNA
+from quantizer import quantize, dequantize, reduce_batch
+from dna_io import save_all_intermediate_results, save_oligos
 
 logger = logging.getLogger(__name__)
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
@@ -60,9 +62,25 @@ def parse_codec(name:str, alpha:float):
 class BatchSingleChannelJpegDNA:
     oligo_length = 200  # Weird but impossible to adapt in Xavier's code
 
-    def __init__(self, alpha):
+    def __init__(self, alpha, num_workers=None):
         self._alpha = alpha
+        self._num_workers = num_workers or os.cpu_count()
 
+    @property
+    def num_workers(self):
+        return self._num_workers
+
+    @num_workers.setter
+    def num_workers(self, value):
+        if value == "all":
+            self._num_workers = os.cpu_count()
+        else:
+            if not isinstance(value, int):
+                raise ValueError("num_workers must be an integer or 'all'")
+            if value < 1:
+                raise ValueError("num_workers must be greater than 0")
+            self._num_workers = value
+        
 
     def reshape_input_encode(self, x):
         """Reshape the input to have the right shape for the encoder."""
@@ -81,7 +99,7 @@ class BatchSingleChannelJpegDNA:
         return tf.reshape(x, [-1, *shape])
 
     @encode_wrapper
-    def encode_batch(self, x):
+    def encode_batch(self, x, apply_dct=False):
         """Encode a batch of images with several channels into a list of oligos."""
         # Input shape: (batch, b1*b2*b3, channels)
         # Output shape: (batch, nb_oligos)
@@ -91,18 +109,19 @@ class BatchSingleChannelJpegDNA:
 
         global _encode_worker
 
-        def _encode_worker(x, alpha):
+        def _encode_worker(x, alpha, apply_dct):
             """Encode a 2 dimensional array into several oligos."""
-            return JpegDNA(alpha).encode(x.numpy(), "from_img")
+            return JpegDNA(alpha).encode(x.numpy(), "from_img", apply_dct=apply_dct)
 
-        f = partial(_encode_worker, alpha=self._alpha)
-        with Pool() as p:
+        f = partial(_encode_worker, alpha=self._alpha, apply_dct=apply_dct)
+        # y = [f(e) for e in x]
+        with Pool(self._num_workers) as p:
             y = list(p.map(f, x))
 
         return tf.ragged.constant(y, dtype=tf.string)
 
     @decode_wrapper
-    def decode_batch(self, x, shape):
+    def decode_batch(self, x, shape, apply_dct=False):
         """Decode a batch of oligos into a batch of images with several channels."""
         # Input shape: (batch, nb_oligos)
         # Output shape: (batch, b1, b2, b3, channels)
@@ -110,12 +129,13 @@ class BatchSingleChannelJpegDNA:
 
         global _decode_worker
 
-        def _decode_worker(oligos, alpha):
+        def _decode_worker(oligos, alpha, apply_dct):
             """Decode a list of oligos into a 2 dimensional array."""
-            return JpegDNA(alpha).decode(oligos.numpy().astype(str))
+            return JpegDNA(alpha).decode(oligos.numpy().astype(str), apply_dct=apply_dct)
 
-        f = partial(_decode_worker, alpha=self._alpha)
-        with Pool() as p:
+        f = partial(_decode_worker, alpha=self._alpha, apply_dct=apply_dct)
+        # y = [f(e) for e in x]
+        with Pool(self._num_workers) as p:
             y = list(p.map(f, x))
 
         y = tf.convert_to_tensor(y)
@@ -146,7 +166,7 @@ class BatchMultiChannelsJpegDNA(BatchSingleChannelJpegDNA):
         n_batches, n_channels = x.shape[0], x.shape[3]
         indexes = list(product(range(n_batches), range(n_channels)))
         f = partial(_encode_worker, alpha=self._alpha)
-        with Pool() as p:
+        with Pool(self._num_workers) as p:
             y = list(p.map(f, [x[i, :, :, j] for i, j in indexes]))
 
         # Reshape the tensor to (batch, channels, nb_oligos)
@@ -173,7 +193,7 @@ class BatchMultiChannelsJpegDNA(BatchSingleChannelJpegDNA):
                 )
         indexes = product(range(n_batch), range(n_channels))
         f = partial(_decode_worker, alpha=self._alpha)
-        with Pool() as p:
+        with Pool(self._num_workers) as p:
             y = list(p.map(f, [x[i, j] for i, j in indexes]))
         y = tf.convert_to_tensor(y)
         # Reshape the tensor to (batch, channels, height, width)
@@ -235,7 +255,7 @@ class CompressionModel(tf.keras.Model):
         self.focal_loss = tf.metrics.Mean(name="focal_loss")
         self.nucleotides_rate = tf.metrics.Mean(name="nucleotides_rate")
 
-    def dna_encoding(self, x):
+    def dna_encoding(self, x, apply_dct=False):
         """Encodes the latent blocks to DNA oligos."""
         assert (
                 len(x.shape) == 5
@@ -245,66 +265,60 @@ class CompressionModel(tf.keras.Model):
                 )  # TODO change: the way to store the mid shape
 
         # Quantize the blocks
-        quantize_range = (
-                self._args.quantize.min,
-                self._args.quantize.max,
-                )  # TODO change: the way to compute the quantization range
-        quantized_x, *_ = tf.quantization.quantize(x, *quantize_range, tf.quint8)
+        quantized_x, quantize_ranges = quantize(x)
 
         # Encode the images to DNA oligos
         # logger.info("Encoding the latent blocks to DNA oligos...")
         with tf.device("/cpu:0"):
-            oligos = self.codec.encode_batch(tf.cast(quantized_x, tf.int32))
+            oligos = self.codec.encode_batch(tf.cast(quantized_x, tf.int32), apply_dct=apply_dct)
 
-        return oligos, shape[1:]
+        return oligos, shape[1:], quantize_ranges
 
-    def dna_decoding(self, oligos, shape):
+    def dna_decoding(self, oligos, shape, quantize_ranges, apply_dct=False):
         """Decodes the DNA oligos to latent blocks."""
 
         # Decode the DNA oligos to images
         # logger.info("Decoding the DNA oligos to latent blocks...")
         with tf.device("/cpu:0"):
-            quantized_x = self.codec.decode_batch(oligos, shape)
+            quantized_x = self.codec.decode_batch(oligos, shape, apply_dct=apply_dct)
 
-        quantize_range = (self._args.quantize.min, self._args.quantize.max)
 
         # Dequantize the blocks
-        x, *_ = tf.quantization.dequantize(
-                tf.cast(quantized_x, tf.quint8), *quantize_range
-                )
+        quantized_x = tf.cast(quantized_x, tf.float32)
+        x = dequantize(quantized_x, quantize_ranges)
 
         return x
 
-    def compress(self, x, full_output=True):
+    def compress(self, x, full_output=True, apply_dct=False):
 
         # Build the encoder (analysis) half of the hierarchical autoencoder.
         y = self.analysis_transform(x)
 
         # Build the bottleneck
-        z, shape = self.dna_encoding(y)
+        z, shape, quantize_ranges = self.dna_encoding(y, apply_dct=apply_dct)
 
         if full_output:
             geo_x = x[:, :, :, :, 0]
 
-            num_voxels = tf.cast(tf.size(geo_x), tf.float32)
-            num_occupied_voxels = tf.reduce_sum(geo_x)
+            num_voxels = reduce_batch(tf.reduce_sum, tf.ones(geo_x.shape))
+            num_occupied_voxels = reduce_batch(tf.reduce_sum, geo_x)
 
             info = Namespace({
                 "y": y,
                 "num_voxels": num_voxels,
                 "num_occupied_voxels": num_occupied_voxels,
                 })
-            return z, shape, info
-        return z, shape
+            return z, shape, quantize_ranges, info
+        return z, shape, quantize_ranges
 
-    def decompress(self, z, y_shape, full_output=True):
+    def decompress(self, z, y_shape, quantize_ranges, full_output=True, apply_dct=False):
         batch_size, *_ = z.shape
         # Build the decoder (synthesis) half of the hierarchical autoencoder.
-        y_hat = self.dna_decoding(z, y_shape)
+        y_hat = self.dna_decoding(z, y_shape, quantize_ranges, apply_dct=apply_dct)
 
-        # Need to add the batch diemension if is equal to 1 because tf.quantize squeezes it
-        if batch_size == 1:
-            y_hat = tf.expand_dims(y_hat, 0)
+        # Need to add the batch dimension if is equal to 1 because tf.quantize squeezes it
+        # if batch_size == 1:
+        #     y_hat = tf.expand_dims(y_hat, 0)
 
         # Build the bottleneck
         x_hat = self.synthesis_transform(y_hat)
@@ -313,13 +327,13 @@ class CompressionModel(tf.keras.Model):
             return x_hat, Namespace({'y_hat': y_hat})
         return x_hat
 
-    def call(self, x):
+    def call(self, x, apply_dct=False):
         """Computes distortion loss."""
 
         # Compute the bottleneck
-        z, info = self.compress(x)
+        z, shape, quantize_ranges, compression_info = self.compress(x, apply_dct=apply_dct)
 
-        x_hat = self.decompress(z)
+        x_hat, decompression_info = self.decompress(z, shape, quantize_ranges, apply_dct=apply_dct)
 
         # Compute the focal loss and/or color loss across pixels.
         # Don't clip or round pixel values while training.
@@ -327,7 +341,8 @@ class CompressionModel(tf.keras.Model):
         nucleotide_rate = number_of_nucleotides(z) / num_voxels
         loss = nucleotide_rate + self._args.lmbda * fcl
         info = {
-                **info,
+                **compression_info,
+                **decompression_info,
                 "focal_loss": fcl,
                 "nucleotide_rate": nucleotide_rate,
                 }
@@ -349,8 +364,8 @@ def load_model(args):
         return tf.keras.models.load_model(args.model_checkpoint)
     return CompressionModel(args)
 
-
 def compress(model, args):
+    global ds, z, y_shape, quantize_ranges, info_compress 
     """Compress the dataset"""
     def validate_args(args=args):
         if np.isreal(args.threshold) and args.save_intermediate:
@@ -361,75 +376,65 @@ def compress(model, args):
                     )
     validate_args(args)
 
+    # Set the number of workers to use for the codec
+    model.codec.num_workers = args.num_workers
+
 
     # Create a tensorflow dataset from the point clouds.
     ds = pc_dir_to_ds(
             args.io.input,
             args.blocks.resolution,
             args.blocks.channels_last,
-            )
+            ).batch(args.num_workers)
 
-    # Then, compress/decompress the dataset and save the results
+
     for data in tqdm(ds, total=ds.cardinality().numpy()):
         x = data["input"]
-        name = data["fname"].numpy().decode("UTF-8").split("/")[-1].split(".")[0]
-        out_fname = os.path.join(args.io.output, name + ".dna")
-        if os.path.exists(out_fname) and not args.io.overwrite:
-            logger.info(f"Because compress.io.overwrite: skipping {out_fname}")
-            continue
+        names = [n.numpy().decode("UTF-8").split("/")[-1].split(".")[0] for n in data["fname"]]
+        out_fnames = [os.path.join(args.io.output, name + ".dna") for name in names]
+        batch_size = x.shape[0]
 
-        global z_strings, y_shape
-        z, y_shape, info_compress = model.compress(tf.expand_dims(x, 0))
-        z_strings = z[0]
+        # Skip if the output file already exists
+        # if os.path.exists(out_fname) and not args.io.overwrite:
+        #     logger.info(f"Because compress.io.overwrite: skipping {out_fname}")
 
+        z, y_shape, quantize_ranges, info_compress = model.compress(x, apply_dct=args.apply_dct)
 
         # Calculate the adaptive threshold.
         if args.threshold == "adaptive":
+            x_hat, info_decompress = model.decompress(z, y_shape, quantize_ranges, apply_dct=args.apply_dct)
             logger.info("Calculating the adaptive threshold...")
-            threshold, info_threshold = compute_optimal_threshold(
-                    model,
-                    z_strings,
-                    y_shape,
-                    data["pc"].numpy(),
+            with Pool(args.num_workers) as pool:
+                f = partial(compute_optimal_threshold, 
                     delta_t=0.01,
                     breakpt=150,
                     verbose=1,
                     )
+                ret = list(pool.starmap(f, zip(x_hat, data["pc"].numpy())))
+                thresholds, pa = zip(*ret)
+
+
             if args.io.save_intermediate_results != "":
-                # Save the intermediate results
-                info_threshold = Namespace(info_threshold)
-
-                # y
-                output_dir = os.path.join(args.io.save_intermediate_results, "y")
-                os.makedirs(output_dir, exist_ok=True)
-                np.save(os.path.join(output_dir, name + ".npy"), info_compress.y.numpy())
-
-                # y_hat
-                output_dir = os.path.join(args.io.save_intermediate_results, "y_hat")
-                os.makedirs(output_dir, exist_ok=True)
-                np.save(os.path.join(output_dir, name + ".npy"), info_threshold.y_hat.numpy())
-
-                # x_ha
-                output_dir = os.path.join(args.io.save_intermediate_results, "x_hat")
-                os.makedirs(output_dir, exist_ok=True)
-                pc_io.write_df(os.path.join(output_dir, name + ".ply"), pc_io.pa_to_df(info_threshold.pa))
+                # Save the intermediate results in another thread.
+                save_all_intermediate_results(names, info_compress.y, info_decompress.y_hat, pa, args.io.save_intermediate_results, join_thread=False)
 
         else:
             assert 0.0 < args.threshold < 1.0, "Threshold must be between 0 and 1."
-            threshold = tf.constant(args.threshold)
+            thresholds = tf.constant(args.threshold, shape=(batch_size,))
 
-        logger.info("Threshold: %f", threshold)
         logger.info("Pack the representations...")
-        nucleotide_stream = model.pack_tensor(
-                threshold, model.codec.oligo_length, y_shape, z_strings
-                )
+        nucleotide_streams = [model.pack_tensor(
+                threshold, model.codec.oligo_length, quantize_range, y_shape, z_strings
+                ) for threshold, quantize_range, z_strings in zip(thresholds, quantize_ranges, z)]
 
         logger.info("Saving the compressed data to %s", args.io.output)
 
-        # Create recursively the output directory if it does not exist.
-        os.makedirs(args.io.output, exist_ok=True)
-        with open(out_fname, "w+") as f:
-            f.write(nucleotide_stream)
+        # Save the compressed representations in another thread.
+        save_oligos(out_fnames, nucleotide_streams, args.io.output, join_thread=False)
+        # os.makedirs(args.io.output, exist_ok=True)
+        # for stream, out_fname in zip(nucleotide_streams, out_fnames):
+        #     with open(out_fname, "w+") as f:
+        #         f.write(stream)
 
 
 def decompress(model, args):
@@ -494,6 +499,4 @@ def main(cfg):
 
 
 if __name__ == "__main__":
-    # Set the memory growth option so it doesn't allocate all GPUs memory.
-
     main()

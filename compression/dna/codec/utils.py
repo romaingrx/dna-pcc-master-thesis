@@ -3,7 +3,7 @@
 """
 @author : Romain Graux
 @date : 2022 May 13, 11:24:49
-@last modified : 2022 May 24, 16:30:31
+@last modified : 2022 June 03, 16:28:57
 """
 
 import logging
@@ -96,3 +96,4 @@ def n_dimensional(fun: callable):
         return np.reshape(y, np.shape(array))
 
     return wrapper
+

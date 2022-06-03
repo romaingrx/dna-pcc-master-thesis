@@ -6,6 +6,8 @@ import numpy as np
 import tensorflow as tf
 import sys
 
+from typing import Tuple
+
 
 def bytes_to_nucleotides(bytestream):
     """
@@ -55,6 +57,7 @@ def nucleotides_to_bytes(nucleotides, bits_type=8):
 def pack_tensor_multi(
         threshold: tf.float32,
         oligo_length: tf.int32,
+        quantize_range: Tuple[float, float],
         y_shape: tf.constant,
         z_strings: tf.ragged.constant,
         ) -> str:
@@ -63,20 +66,25 @@ def pack_tensor_multi(
 
     Parameters:
         threshold: Threshold to transform the output of the NN into an occupancy map.
+        oligo_length: Length of the oligo.
+        quantize_range: Range of the quantization (min, max of the y latent representation).
         y_shape: Shape of the analyis tensor (b1, b2, b3, latent_depth).
         z_strings: List of tensors of the latent DNA.
 
     Returns:
         A string of DNA nucleotides with structure:
-        [threshold, y_shape, *z_length, *z_strings]
+        [threshold, oligo_length, quantize_range, y_shape, *z_length, *z_strings]
 
     Remarks:
         All lengths are encoded on 1 byte, so the maximum length is 255.
         It is possible to encode on several bytes if needed.
+
     """
+
 
     threshold_int = (np.round(threshold.numpy() * 100)).astype("uint8")
     threshold_string = bytes_to_nucleotides(bytes([threshold_int]))
+    quantize_range_string = bytes_to_nucleotides(np.array(quantize_range, dtype=np.float32).tobytes())
     oligo_length_string = bytes_to_nucleotides(bytes([oligo_length]))
     y_shape_string = bytes_to_nucleotides(bytes(y_shape.numpy().tolist()))
     z_length_strings = bytes_to_nucleotides(
@@ -86,6 +94,7 @@ def pack_tensor_multi(
     return (
             threshold_string
             + oligo_length_string
+            + quantize_range_string
             + y_shape_string
             + z_length_strings
             + "".join(tf.reshape(z_strings, (-1,)).numpy().astype(str))
@@ -94,6 +103,7 @@ def pack_tensor_multi(
 def pack_tensor_single(
         threshold: tf.float32,
         oligo_length: tf.int32,
+        quantize_range: Tuple[float, float],
         y_shape: tf.constant,
         z_strings: tf.ragged.constant,
         ) -> str:
@@ -102,12 +112,14 @@ def pack_tensor_single(
 
     Parameters:
         threshold: Threshold to transform the output of the NN into an occupancy map.
+        oligo_length: Length of the oligo.
+        quantize_range: Range of the quantization (min, max of the y latent representation).
         y_shape: Shape of the analyis tensor (b1, b2, b3, latent_depth).
         z_strings: List of tensors of the latent DNA.
 
     Returns:
         A string of DNA nucleotides with structure:
-        [threshold, y_shape, *z_length, *z_strings]
+        [threshold, oligo_length, quantize_range, y_shape, *z_strings]
 
     Remarks:
         All lengths are encoded on 1 byte, so the maximum length is 255.
@@ -116,12 +128,14 @@ def pack_tensor_single(
 
     threshold_int = (np.round(threshold.numpy() * 100)).astype("uint8")
     threshold_string = bytes_to_nucleotides(bytes([threshold_int]))
+    quantize_range_string = bytes_to_nucleotides(np.array(quantize_range, dtype=np.float32).tobytes())
     oligo_length_string = bytes_to_nucleotides(bytes([oligo_length]))
     y_shape_string = bytes_to_nucleotides(bytes(y_shape.numpy().tolist()))
 
     return (
             threshold_string
             + oligo_length_string
+            + quantize_range_string
             + y_shape_string
             + "".join(tf.reshape(z_strings, (-1,)).numpy().astype(str))
             )
@@ -153,6 +167,12 @@ def unpack_tensor_multi(nucleotidestream):
             )
     seeker += 4
 
+    quantize_range_string = nucleotidestream[seeker : seeker + 32]
+    quantize_range = np.frombuffer(
+            nucleotides_to_bytes(quantize_range_string), dtype=np.float32
+            )
+    seeker += 32
+
     y_shape_string = nucleotidestream[seeker : seeker + 16]
     _, _, _, latent_depth = y_shape = np.frombuffer(
             nucleotides_to_bytes(y_shape_string), dtype=np.uint8
@@ -178,6 +198,7 @@ def unpack_tensor_multi(nucleotidestream):
     return (
             tf.constant(threshold, dtype=tf.float32),
             tf.constant(oligo_length, dtype=tf.int32),
+            tf.constant(quantize_range, dtype=tf.float32),
             tf.constant(y_shape, dtype=tf.int32),
             tf.ragged.constant(z_strings, dtype=tf.string),
             )
@@ -190,7 +211,7 @@ def unpack_tensor_single(nucleotidestream):
         nucleotidestream: Nucelotide string to unpack.
 
     Returns:
-        A tuple of the threshold, y_shape, z_length, and z_strings.
+        A tuple of the threshold, oligos_length, quantize_range, y_shape and z_strings.
     """
 
     seeker = 0
@@ -208,6 +229,12 @@ def unpack_tensor_single(nucleotidestream):
             )
     seeker += 4
 
+    quantize_range_string = nucleotidestream[seeker : seeker + 32]
+    quantize_range = np.frombuffer(
+            nucleotides_to_bytes(quantize_range_string), dtype=np.float32
+            )
+    seeker += 32
+
     y_shape_string = nucleotidestream[seeker : seeker + 16]
     _, _, _, latent_depth = y_shape = np.frombuffer(
             nucleotides_to_bytes(y_shape_string), dtype=np.uint8
@@ -221,6 +248,7 @@ def unpack_tensor_single(nucleotidestream):
     return (
             tf.constant(threshold, dtype=tf.float32),
             tf.constant(oligo_length, dtype=tf.int32),
+            tf.constant(quantize_range, dtype=tf.float32),
             tf.constant(y_shape, dtype=tf.int32),
             tf.constant(z_string, dtype=tf.string),
             )
@@ -254,7 +282,7 @@ def po2po(block1_pc, block2_pc):
 
 
 def compute_optimal_threshold(
-        model, z_strings, y_shape, pc, delta_t=0.01, breakpt=50, verbose=1
+        x_hat, pc, delta_t=0.01, breakpt=50, verbose=1
         ):
     """
     Computes the optimal threshold used to convert the output of the
@@ -277,10 +305,6 @@ def compute_optimal_threshold(
             1,
             2,
             }, "Verbose should be either 0(no printing), 1 (partial printing) or 2 (full printing)"
-    # Decompress the latent tensor.
-    x_hat, info_decompress = model.decompress(tf.expand_dims(z_strings, 0), y_shape, full_output=True)
-    x_hat = tf.squeeze(x_hat.numpy())
-
     # Prepare parameters for search.
     num_not_improve = 0
     thresholds = tf.linspace(
@@ -288,6 +312,9 @@ def compute_optimal_threshold(
             )
     min_mse = 1e10
     best_threshold = tf.constant(0)
+
+    # Remove the last axis, which is the geometry dimension.
+    x_hat = tf.squeeze(x_hat)
 
     for threshold in thresholds:
 
@@ -322,7 +349,7 @@ def compute_optimal_threshold(
             if verbose >= 1:
                 print(f" Best threshold found: {best_threshold.numpy()}")
             pa = np.argwhere(x_hat > best_threshold).astype("float32")
-            return best_threshold, {'pa':pa, **info_decompress}
+            return best_threshold, pa
 
         # Update the current best threshold if necessary.
         if mse < min_mse:
@@ -339,12 +366,13 @@ def compute_optimal_threshold(
                 print(f"Not a better threshold mse = {mse} at t = {threshold.numpy()}")
             if num_not_improve == breakpt:
                 pa = np.argwhere(x_hat > best_threshold).astype("float32")
-                return best_threshold, {'pa':pa, **info_decompress}
+                return best_threshold, pa 
 
 
 if __name__ == "__main__":
     _, _, _, latent_depth = y_shape = tf.constant([64, 64, 64, 160])
     oligo_length = np.random.randint(10, 255)
+    quantize_range = tuple(tf.random.normal((2,)))
     z_strings = tf.ragged.constant(
             [
                 [
@@ -358,16 +386,19 @@ if __name__ == "__main__":
             tf.cast(tf.random.uniform((1,), 0, 100, dtype=tf.int32), tf.float32) / 100.0
             )[0]
 
-    packed = pack_tensor_multi(threshold, oligo_length, y_shape, z_strings)
+
+    packed = pack_tensor_multi(threshold, oligo_length, quantize_range, y_shape, z_strings)
     (
             unpacked_threshold,
             unpacked_oligo_length,
+            unpacked_quantize_range,
             unpacked_y_shape,
             unpacked_z_strings,
             ) = unpack_tensor_multi(packed)
 
     assert unpacked_threshold == threshold
     assert unpacked_oligo_length == oligo_length
+    assert np.all(unpacked_quantize_range == quantize_range)
     assert (y_shape == unpacked_y_shape).numpy().all()
     assert (
             (z_strings.bounding_shape() == unpacked_z_strings.bounding_shape())
@@ -388,19 +419,23 @@ if __name__ == "__main__":
             tf.cast(tf.random.uniform((1,), 0, 100, dtype=tf.int32), tf.float32) / 100.0
             )[0]
 
-    packed = pack_tensor_single(threshold, oligo_length, y_shape, z_strings)
+    packed = pack_tensor_single(threshold, oligo_length, quantize_range, y_shape, z_strings)
 
     (
             unpacked_threshold,
             unpacked_oligo_length,
+            unpacked_quantize_range,
             unpacked_y_shape,
             unpacked_z_strings,
             ) = unpack_tensor_single(packed)
 
     assert unpacked_threshold == threshold
     assert unpacked_oligo_length == oligo_length
+    assert np.all(unpacked_quantize_range == quantize_range)
     assert (y_shape == unpacked_y_shape).numpy().all()
     assert (z_strings.shape == unpacked_z_strings.shape)
     assert (z_strings == unpacked_z_strings).numpy().all()
 
     print("All tests passed.")
+
+
