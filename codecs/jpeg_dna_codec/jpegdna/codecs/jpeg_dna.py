@@ -14,7 +14,7 @@ class JpegDNA():
         self.verbose = verbose
         self.codec = None
 
-    def encode(self, inp, *args):
+    def encode(self, inp, *args, apply_dct=True):
         """Encoding function that will adapt infuncion of the input shape
 
         :param inp: Input image to encode
@@ -32,9 +32,9 @@ class JpegDNA():
             self.codec = JPEGDNARGB(self.alpha, formatting=True, primer=self.primer, channel_sampler=self.sampler, verbosity=self.verbosity, verbose=self.verbose)
         elif image_type == "gray":
             self.codec = JPEGDNAGray(self.alpha, formatting=True, primer=self.primer, verbosity=self.verbosity, verbose=self.verbose)
-        return self.codec.full_encode(inp, *args)
+        return self.codec.full_encode(inp, *args, apply_dct=apply_dct)
 
-    def decode(self, code):
+    def decode(self, code, apply_dct=True):
         """Decoding function that will adapt in function of the format info
 
         :param code: Input oligos to deformat and decode
@@ -55,12 +55,12 @@ class JpegDNA():
             raise ValueError
         if freq_origin == "default":
             if image_type == "gray":
-                return self.codec.full_decode(code, freq_origin, m, n)
+                return self.codec.full_decode(code, freq_origin, m, n, apply_dct=apply_dct)
             elif image_type == "RGB":
                 return self.codec.full_decode(code, freq_origin, ((m[0], n[0]), (m[1], n[1]), (m[2], n[2])))
         else:
             if image_type == "gray":
-                return self.codec.full_decode(code, freq_origin, m, n, freq_dc_out, freq_ac_out)
+                return self.codec.full_decode(code, freq_origin, m, n, freq_dc_out, freq_ac_out, apply_dct=apply_dct)
             elif image_type == "RGB":
                 return self.codec.full_decode(code, freq_origin,
                                          ((m[0], n[0], freq_dc_out[0], freq_ac_out[0]),

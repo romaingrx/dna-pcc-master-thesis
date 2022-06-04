@@ -1,8 +1,8 @@
 """Helper functions for .mat data"""
 import _pickle as pickle
 from scipy.io import loadmat
-from functools import lru_cache
 import gc
+from functools import lru_cache
 
 @lru_cache(maxsize=None)
 def load_lut_matrix(string):
@@ -13,8 +13,8 @@ def load_lut_matrix(string):
 def load_codebook_matrix(string):
     """Loads matrix values saved in .pkl file"""
     print("Loading codebook matrix... ", string)
-    with open(string, "rb") as f:
+    with open(string, "rb") as fd:
         gc.disable()
-        arr = pickle.load(f)
+        arr = pickle.load(fd)
         gc.enable()
     return arr

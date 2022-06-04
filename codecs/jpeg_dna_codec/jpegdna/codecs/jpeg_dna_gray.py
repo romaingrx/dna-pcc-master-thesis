@@ -338,15 +338,15 @@ class JPEGDNAGray(AbstractCoder):
             run_cat_count_tot, np.array([count_run16_tot, count_run_end_tot])
         )
 
-    def full_encode(self, inp, *args):
+    def full_encode(self, inp, *args, apply_dct=True):
         self.set_state(inp, *args, case="encode")
-        out = self.encode(inp)
+        out = self.encode(inp, apply_dct=apply_dct)
         if self.formatting:
             return self.formatter.full_format(out, args[0], *self.get_state()[1:])
         else:
             return (out, self.get_state())
 
-    def encode(self, inp):
+    def encode(self, inp, apply_dct=True):
         """JPEG-DNA encoder: encodes the image into a DNA-like bitstream
 
         :param inp: input image
@@ -443,18 +443,18 @@ class JPEGDNAGray(AbstractCoder):
                 if self.verbose and self.verbosity >= BLOCK_VERBOSITY_THRESHOLD:
                     print(f"--------------------\nEncoding block ({i},{j}):\n{block}")
                 # centering values
-                centered_block = block.astype(int) - 128
+                centered_block = block.astype(int) - 128 if apply_dct else block
                 if (
                     self.verbose
                     and self.verbosity >= BLOCK_CENTERING_VERBOSITY_THRESHOLD
                 ):
                     print(f"----------\nCentered block ({i},{j}):\n{centered_block}")
                 # dct transform
-                block_dct = self.dct.full_forward(centered_block, "ortho")
+                block_dct = self.dct.full_forward(centered_block, "ortho") if apply_dct else centered_block
                 if self.verbose and self.verbosity >= DCT_VERBOSITY_THRESHOLD:
                     print(f"----------\nForward dct:\n{block_dct}")
                 # quantization
-                coeff = np.divide(block_dct, self.gammas)
+                coeff = np.divide(block_dct, self.gammas) if apply_dct else block_dct
                 if self.verbose and self.verbosity >= QUANTIZATION_VERBOSITY_THRESHOLD:
                     print(f"----------\nDivided block:\n{coeff}")
                 coeff = coeff.round().astype(int)
@@ -486,7 +486,7 @@ class JPEGDNAGray(AbstractCoder):
         #     print(f"========================\nEncoded stream:\n{jpeg_coded}\n========================")
         return jpeg_coded
 
-    def full_decode(self, code, *args):
+    def full_decode(self, code, *args, apply_dct=True):
         if self.formatting:
             code, (alpha, m, n, freq_dc, freq_ac) = self.formatter.full_deformat(code)
             freq_origin = self.formatter.freq_origin
@@ -504,9 +504,9 @@ class JPEGDNAGray(AbstractCoder):
                 self.freq_ac[-1] = abs(val - 1)
             else:
                 self.freq_ac[-1] = 1
-        return self.decode(code)
+        return self.decode(code, apply_dct=apply_dct)
 
-    def decode(self, code):
+    def decode(self, code, apply_dct=True):
         """JPEG-DNA decoder: decodes the input DNA-like bitstream into an block image of size self.n x self.m
 
         :param code: DNA-like bitstream
@@ -625,15 +625,15 @@ class JPEGDNAGray(AbstractCoder):
                 # inverse zigzag transform
                 block = self.zigzag.full_inverse(seq_coeff, 8, 8)
                 # inverse quantization
-                block = block * self.gammas
+                block *= self.gammas if apply_dct else 1.
                 if self.verbose and self.verbosity >= QUANTIZATION_VERBOSITY_THRESHOLD:
                     print(f"----------\nDequantized block:\n{block}")
                 # inverse dct transform + rounding
-                block = (self.dct.full_inverse(block, "ortho")).round()
+                block = (self.dct.full_inverse(block, "ortho")).round() if apply_dct else block
                 if self.verbose and self.verbosity >= DCT_VERBOSITY_THRESHOLD:
                     print(f"----------\nInverse dct:\n{block}")
                 # decentering values
-                block += 128
+                block += 128 if apply_dct else 0
                 if (
                     self.verbose
                     and self.verbosity >= BLOCK_CENTERING_VERBOSITY_THRESHOLD
