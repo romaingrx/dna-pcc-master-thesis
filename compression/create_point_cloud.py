@@ -3,7 +3,7 @@
 """
 @author : Romain Graux
 @date : 2022 June 04, 09:08:42
-@last modified : 2022 June 04, 09:49:14
+@last modified : 2022 June 04, 10:01:41
 """
 
 import numpy as np
@@ -12,7 +12,7 @@ from pyntcloud import PyntCloud
 
 
 def create_from_inequality(width: int, formula: callable) -> PyntCloud:
-    ranger = np.arange(-width//2, width//2 + 1)
+    ranger = np.arange(-width//2, width//2)
     x, y, z = np.meshgrid(ranger, ranger, ranger)
     occupancy_map = formula(x, y, z)
     points = np.argwhere(occupancy_map)
@@ -36,5 +36,6 @@ def create_bounded_sphere(width: int, radius_in: int, radius_out: int):
     return create_from_inequality(width, formula)
 
 if __name__ == '__main__':
+    dataset_dir = "datasets/tiny"
     sphere = create_bounded_sphere(width=128, radius_in=63, radius_out=64)
-    sphere.to_file('datasets/ply/bounded_sphere.ply')
+    sphere.to_file(f'{dataset_dir}/bounded_sphere.ply')
