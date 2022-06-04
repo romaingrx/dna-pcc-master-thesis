@@ -16,10 +16,12 @@ from src import pc_io, processing
 logger = logging.getLogger(__name__)
 
 
-def pc_dir_to_ds(input_dir, resolution, channels_last):
+def pc_dir_to_ds(input_dir, resolution, channels_last, n_files=None):
     """Load all point clouds from the input_dir and transform them to a tensorflow dataset."""
     # Load the point clouds
     files = sorted(pc_io.get_files(input_dir))
+    if n_files is not None:
+        files = files[:n_files]
     # Load the blocks from the files.
     p_min, p_max, dense_tensor_shape = pc_io.get_shape_data(resolution, channels_last)
     raw_points = pc_io.load_points(files, p_min, p_max)

@@ -3,7 +3,7 @@
 """
 @author : Romain Graux
 @date : 2022 May 13, 15:47:09
-@last modified : 2022 June 02, 15:19:29
+@last modified : 2022 June 04, 21:55:32
 """
 
 import os
@@ -16,12 +16,14 @@ from omegaconf import OmegaConf
 from helpers import omegaconf2namespace, Namespace
 
 import numpy as np
+import pandas as pd
 import tensorflow as tf
 from pyntcloud import PyntCloud
 from multiprocessing import Pool
 from jpegdna.codecs import JpegDNA
+import matplotlib.pyplot as plt
 
-from main import CompressionModel
+from main import CompressionModel, BatchSingleChannelJpegDNA
 from src.pc_io import load_pc, get_shape_data, write_df, pa_to_df
 from src.processing import pc_to_occupancy_grid
 from utils import pc_dir_to_ds
@@ -99,7 +101,7 @@ def bypass_dna(args):
 
     model = CompressionModel(args.architecture)
 
-    os.makedirs("bypass_dna", exist_ok=True)
+    os.makedirs("bypass_dna/x_hat", exist_ok=True)
 
     for data in tqdm(ds, total=ds.cardinality().numpy()):
         x = data["input"]
@@ -108,9 +110,8 @@ def bypass_dna(args):
         y = model.analysis_transform(tf.expand_dims(x, 0))
         x_hat = model.synthesis_transform(y)[0]
 
-
         pa = np.argwhere(x_hat.numpy() > 0.5).astype("float32")
-        write_df(f"./bypass_dna/{name}.ply", pa_to_df(pa))
+        write_df(f"./bypass_dna/x_hat/{name}.ply", pa_to_df(pa))
 
 def quantization_tables(args):
     """
@@ -118,30 +119,72 @@ def quantization_tables(args):
     """
     from jpegdna.codecs import JPEGDNAGray
 
-    def encode_decode_mse(x, gammas=None, gammas_chroma=None):
+    def encode_decode_mse(x, gammas=None, gammas_chroma=None, apply_dct=True):
         if gammas is not None:
             JPEGDNAGray.GAMMAS = gammas
         if gammas_chroma is not None:
             JPEGDNAGray.GAMMAS_CHROMA = gammas_chroma
         codec = JpegDNA(1)
-        oligos = codec.encode(x, "from_img")
-        reconstructed = codec.decode(oligos)
+        oligos = codec.encode(x, "from_img", apply_dct=apply_dct)
+        reconstructed = codec.decode(oligos, apply_dct=apply_dct)
         return np.mean(np.power(x - reconstructed, 2)), len(np.reshape(oligos, (-1,)))
 
-    inp = np.random.randint(0, 255, size=(64, 64))
+    # inp = np.random.randint(0, 255, size=(64, 64))
+    inp = np.round(np.random.rand(64, 64) * 255)
     ones_block = np.ones((8, 8))
 
-    print(f'MSE with default parameters: {encode_decode_mse(inp)}')
+    print(f'MSE with default parameters and dct: {encode_decode_mse(inp)}')
+    print(f'MSE with default parameters and no dct: {encode_decode_mse(inp, apply_dct=False)}')
 
-    print(f'MSE with ones: {encode_decode_mse(inp, gammas=ones_block, gammas_chroma=ones_block)}')
+    print(f'MSE with ones and dct: {encode_decode_mse(inp, gammas=ones_block, gammas_chroma=ones_block)}')
+
+def evaluate_y_reconstruction(args):
+    """
+    Evaluate the reconstruction of y
+    """
+    global files, y, y_hat
+    files = load_io_files(args, exception=['x', 'x_hat'])
+    y, y_hat = list(zip(*files))
+
+    print(f"MSE: {np.mean(np.power(np.array(y) - np.array(y_hat), 2))}")
+    print(f"Max: {np.max(y)}")
+    print(f"Min: {np.min(y)}")
 
 
 
-def quantize(args):
+
+
+def quantization(args):
     """
     Quantize the float latent representation into quint8
     """
-    pass
+    ds = pc_dir_to_ds(args.io.x, args.blocks.resolution, args.blocks.channel_last)
+    x_ds = ds.map(lambda e: tf.expand_dims(e["input"], 0))
+
+    model = CompressionModel(args.architecture)
+    for x in tqdm(x_ds, total=x_ds.cardinality().numpy()):
+        y = model.analysis_transform(x)
+
+
+        # Quantize the latent representation
+        quantize_range = np.min(y.numpy()), np.max(y.numpy())
+        yq, *_ = tf.quantization.quantize(
+                y, *quantize_range, tf.quint8
+        )
+
+
+def study_output_analysis(args):
+    """
+    Study the output of the analysis transform
+    """
+    global files, x, y, y_hat, x_hat
+
+    files = load_io_files(args)
+    for x, y, y_hat, x_hat in files:
+        x.plot(kind='hist', bins=64, color='blue', subplots=True)
+        x_hat.plot(kind='hist', bins=64, color='blue', subplots=True)
+        plt.show()
+
 
 
 
@@ -151,10 +194,10 @@ def main(cfg: OmegaConf) -> None:
     global args
     args = omegaconf2namespace(cfg)
 
-    tasks = ["bypass_dna", "quantization_tables", "play"]
+    tasks = ["bypass_dna", "quantization_tables", "quantization", "evaluate_y_reconstruction", "play", "study_output_analysis"]
     if args.task not in tasks:
         raise ValueError(f"Task {args.task} not supported, please choose between {tasks}")
-    
+
     globals()[args.task](args)
 
 

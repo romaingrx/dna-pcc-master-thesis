@@ -1,9 +1,8 @@
-#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 @author : Romain Graux
 @date : 2022 May 10, 11:15:58
-@last modified : 2022 June 03, 22:22:01
+@last modified : 2022 June 04, 15:34:48
 """
 
 from functools import partial
@@ -15,10 +14,10 @@ import numpy as np
 import os
 import tensorflow as tf
 import tensorflow_compression as tfc
-from jpegdna.codecs import JpegDNA
+from jpegdna.codecs import JpegDNA, JPEGDNAGray
 
-import ray
 from ray.util.multiprocessing import Pool
+# from multiprocessing import Pool
 
 
 from helpers import Namespace, omegaconf2namespace, encode_wrapper, decode_wrapper
@@ -62,25 +61,50 @@ def parse_codec(name:str, alpha:float):
 class BatchSingleChannelJpegDNA:
     oligo_length = 200  # Weird but impossible to adapt in Xavier's code
 
-    def __init__(self, alpha, num_workers=None):
+    def __init__(self, alpha):
         self._alpha = alpha
-        self._num_workers = num_workers or os.cpu_count()
+        self.num_workers = None
+        self.gammas = None
 
     @property
     def num_workers(self):
-        return self._num_workers
+        return self.__num_workers
 
     @num_workers.setter
     def num_workers(self, value):
-        if value == "all":
-            self._num_workers = os.cpu_count()
+        if value == "all" or value is None:
+            self.__num_workers = os.cpu_count()
         else:
             if not isinstance(value, int):
                 raise ValueError("num_workers must be an integer or 'all'")
             if value < 1:
                 raise ValueError("num_workers must be greater than 0")
-            self._num_workers = value
-        
+            self.__num_workers = value
+
+    @property
+    def gammas(self):
+        return self.__gammas
+
+    @gammas.setter
+    def gammas(self, value):
+        if value is None:
+            self.__gammas = None
+        else:
+            if np.isscalar(value):
+                if value <= 0:
+                    raise ValueError("gammas must be greater than 0")
+                self.__gammas = value * np.ones((8, 8))
+            elif isinstance(value, np.ndarray):
+                if value.shape != (8, 8):
+                    raise ValueError("gammas must be a 2D array of shape (8, 8)")
+                if not np.all(value > 0):
+                    raise ValueError("gammas must be greater than 0")
+                self.__gammas = value
+            else:
+                raise ValueError("gammas must be a scalar or a 2D array")
+            JPEGDNAGray.GAMMAS = self.__gammas
+            JPEGDNAGray.GAMMAS_CHROMA = self.__gammas
+
 
     def reshape_input_encode(self, x):
         """Reshape the input to have the right shape for the encoder."""
@@ -109,13 +133,18 @@ class BatchSingleChannelJpegDNA:
 
         global _encode_worker
 
-        def _encode_worker(x, alpha, apply_dct):
+        def _encode_worker(x, alpha, apply_dct, gammas):
             """Encode a 2 dimensional array into several oligos."""
+            # set the context
+            if gammas is not None:
+                JPEGDNAGray.GAMMAS = gammas
+                JPEGDNAGray.GAMMAS_CHROMA = gammas
+
             return JpegDNA(alpha).encode(x.numpy(), "from_img", apply_dct=apply_dct)
 
-        f = partial(_encode_worker, alpha=self._alpha, apply_dct=apply_dct)
+        f = partial(_encode_worker, alpha=self._alpha, apply_dct=apply_dct, gammas=self.gammas)
         # y = [f(e) for e in x]
-        with Pool(self._num_workers) as p:
+        with Pool(self.num_workers) as p:
             y = list(p.map(f, x))
 
         return tf.ragged.constant(y, dtype=tf.string)
@@ -135,7 +164,7 @@ class BatchSingleChannelJpegDNA:
 
         f = partial(_decode_worker, alpha=self._alpha, apply_dct=apply_dct)
         # y = [f(e) for e in x]
-        with Pool(self._num_workers) as p:
+        with Pool(self.num_workers) as p:
             y = list(p.map(f, x))
 
         y = tf.convert_to_tensor(y)
@@ -166,7 +195,7 @@ class BatchMultiChannelsJpegDNA(BatchSingleChannelJpegDNA):
         n_batches, n_channels = x.shape[0], x.shape[3]
         indexes = list(product(range(n_batches), range(n_channels)))
         f = partial(_encode_worker, alpha=self._alpha)
-        with Pool(self._num_workers) as p:
+        with Pool(self.num_workers) as p:
             y = list(p.map(f, [x[i, :, :, j] for i, j in indexes]))
 
         # Reshape the tensor to (batch, channels, nb_oligos)
@@ -193,7 +222,7 @@ class BatchMultiChannelsJpegDNA(BatchSingleChannelJpegDNA):
                 )
         indexes = product(range(n_batch), range(n_channels))
         f = partial(_decode_worker, alpha=self._alpha)
-        with Pool(self._num_workers) as p:
+        with Pool(self.num_workers) as p:
             y = list(p.map(f, [x[i, j] for i, j in indexes]))
         y = tf.convert_to_tensor(y)
         # Reshape the tensor to (batch, channels, height, width)
@@ -374,11 +403,21 @@ def compress(model, args):
                     "`threshold` is not set to `adaptive` so the intermediate ",
                     "results will not be saved."
                     )
+
+        if not args.apply_dct and args.gammas is not None:
+            logger.warning(
+                    "The `apply_dct` flag is set to False, but the ",
+                    "`gammas` flag is not None so the gammas will not be ",
+                    "applied."
+                    )
+
     validate_args(args)
 
     # Set the number of workers to use for the codec
     model.codec.num_workers = args.num_workers
 
+    # Set the gammas values used in the dct quantization if applicable
+    model.codec.gammas = args.gammas
 
     # Create a tensorflow dataset from the point clouds.
     ds = pc_dir_to_ds(
@@ -411,7 +450,7 @@ def compress(model, args):
                     verbose=1,
                     )
                 ret = list(pool.starmap(f, zip(x_hat, data["pc"].numpy())))
-                thresholds, pa = zip(*ret)
+            thresholds, pa = zip(*ret)
 
 
             if args.io.save_intermediate_results != "":

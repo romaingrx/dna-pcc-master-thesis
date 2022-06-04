@@ -4,7 +4,4 @@ alpha: 1.0 # The alpha for the JpegDNA codec tables
 lmbda: 1.0 # The lambda value is used for the contribution of the focal loss in the final loss, loss = nucleotide_rate + lambda * focal_loss
 model_checkpoint: '' # If you want to load from a model, ex: "${hydra:runtime.cwd}/models/dna-codec/model"
 transfer_learning_model: "${models_dir}/pcc-geo-slicing/${experiment}" # Model from which we get the analysis and synthetis transform weights
-# quantize: # The minimum and maximum value of analysis blocks (y) used to compute the quantization
-#     min: -17.92
-#     max: 23.92
 codec: 'BatchSingleChannelJpegDNA' # The codec to encode into dna strands, choice between BatchMultiChannelsJpegDNA and BatchSingleChannelJpegDNA
