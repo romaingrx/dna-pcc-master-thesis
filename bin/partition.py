@@ -36,7 +36,7 @@ def partition_pc(pc_file, block_size, keep_size, normalize, input_dir, output_di
                     tmp.y -= j * block_size
                     tmp.z -= k * block_size
                     # normalize rgb values
-                    if normalize:
+                    if normalize and hasattr(tmp, 'rgb'):
                         tmp.red /= 255
                         tmp.green /= 255
                         tmp.blue /= 255
