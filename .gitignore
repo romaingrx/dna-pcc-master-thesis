@@ -26,3 +26,6 @@
 *.idea
 *__pycache__
 *.ipynb_checkpoints
+
+# mac files
+*.DS_Store

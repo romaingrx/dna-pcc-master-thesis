@@ -2,7 +2,7 @@
 %-*- coding: utf-8 -*-
 %@author : Romain Graux
 %@date : 2022 April 24, 11:46:53
-%@last modified : 2022 May 04, 17:27:59
+%@last modified : 2022 June 05, 17:01:33
 
 \documentclass{RomainGrauxThesis}
 
@@ -22,6 +22,7 @@
 
 \usepackage{xcolor}
 \usepackage{graphicx}
+\usepackage{amsmath} % for \text
 \usepackage{url}
 \def\UrlBreaks{\do\/\do-}
 \usepackage[colorlinks=false, allcolors=purple]{hyperref}
@@ -29,9 +30,12 @@
 \setlength{\parskip}{0.1cm}
 
 %% Set all variables
-\author{Romain \textsc{Graux}}
+\author{\href{https://romaingraux.xyz}{Romain \textsc{Graux}}}
 \thesistitle{Point cloud compression for DNA based storage}
-\supervisor{Dr. Touradj \textsc{Ebrahimi}}
+\supervisor{
+    \href{https://people.epfl.ch/touradj.ebrahimi}{Dr. Touradj \textsc{Ebrahimi}}\\ 
+    \href{https://people.epfl.ch/davi.nachtigalllazzarotto}{Davi \textsc{Lazzarotto}}
+}
 \university{EPFL}
 \lab{MMSPG}
 \faculty{Computer and Communication Sciences}
