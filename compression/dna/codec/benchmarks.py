@@ -26,12 +26,8 @@ import matplotlib.pyplot as plt
 from main import CompressionModel, BatchSingleChannelJpegDNA
 from src.pc_io import load_pc, get_shape_data, write_df, pa_to_df
 from src.processing import pc_to_occupancy_grid
-from utils import pc_dir_to_ds
+from utils import pc_dir_to_ds, extract_path, extract_ext, extract_name
 
-
-extract_name = lambda fname: fname.split('/')[-1].split('.')[0]
-extract_ext = lambda fname: fname.split('/')[-1].split('.')[-1]
-extract_path = lambda fname: '/'.join(fname.split('/')[:-1])
 
 def align_files(*directories):
     """

@@ -3,7 +3,7 @@
 """
 @author : Romain Graux
 @date : 2022 May 13, 11:24:49
-@last modified : 2022 June 03, 16:28:57
+@last modified : 2022 June 05, 23:40:27
 """
 
 import logging
@@ -15,13 +15,25 @@ from src import pc_io, processing
 
 logger = logging.getLogger(__name__)
 
+extract_name = lambda fname: fname.split('/')[-1].split('.')[0]
+extract_ext = lambda fname: fname.split('/')[-1].split('.')[-1]
+extract_path = lambda fname: '/'.join(fname.split('/')[:-1])
 
-def pc_dir_to_ds(input_dir, resolution, channels_last, n_files=None):
+
+def pc_dir_to_ds(input_dir, resolution, channels_last, n_files=None, except_filenames=None):
     """Load all point clouds from the input_dir and transform them to a tensorflow dataset."""
     # Load the point clouds
-    files = sorted(pc_io.get_files(input_dir))
+    files = pc_io.get_files(input_dir)
+    if except_filenames is not None:
+        # Exctract names of except_filenames
+        except_filenames = list(map(extract_name, except_filenames))
+        files = [file for file in files if extract_name(file) not in except_filenames]
+    if len(files) == 0:
+        raise ValueError(f"No files found in {input_dir} with except_filenames={except_filenames}")
     if n_files is not None:
         files = files[:n_files]
+    files = sorted(files)
+
     # Load the blocks from the files.
     p_min, p_max, dense_tensor_shape = pc_io.get_shape_data(resolution, channels_last)
     raw_points = pc_io.load_points(files, p_min, p_max)

@@ -2,7 +2,7 @@
 """
 @author : Romain Graux
 @date : 2022 May 10, 11:15:58
-@last modified : 2022 June 04, 15:34:48
+@last modified : 2022 June 05, 23:35:56
 """
 
 from functools import partial
@@ -424,6 +424,7 @@ def compress(model, args):
             args.io.input,
             args.blocks.resolution,
             args.blocks.channels_last,
+            except_filenames=os.listdir(args.io.output) if os.path.exists(args.io.output) and not args.io.overwrite else None,
             ).batch(args.num_workers)
 
 
