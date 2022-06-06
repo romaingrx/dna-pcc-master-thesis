@@ -2,7 +2,7 @@
 %-*- coding: utf-8 -*-
 %@author : Romain Graux
 %@date : 2022 May 03, 12:22:56
-%@last modified : 2022 June 06, 12:52:29
+%@last modified : 2022 June 06, 14:07:25
 
 As we produce more data every year, we need to find a way to store it efficiently. Currently, we store our data in big data center consuming a lot of energy to keep these informations in electronic devices, \illustrate{Find the consumption of data centers}
 
@@ -21,7 +21,7 @@ Unfortunately, nucleic acids have biological constraints and can not be assemble
 
 In this part, we are going to go through some of the constraints that we have to respect to build a DNA strand and be able to recover it when sequencing it. Unfortunately, the list of constraints is not exhaustive and in the real life, each arangement of nucleic acids has an impact on the strength of a strand, therefore we can only simulate the longevity of a strand thanks to the actual discoveries but not strictly respect the biological constraints. 
 
-All constraints could be reduced to limitations regarding GC content, long strands of a single nucleotide (so-called homopolymers), several repeated subsequences in a strand and motifs with biological relevance. 
+All constraints could be reduced to limitations regarding GC content, long strands of a single nucleotide (so-called homopolymers), several repeated subsequences in a strand and motifs with biological relevance. In the next sections, we are going to divide the constraints into each step of the process, the explanation for each constraint comes directly from \cite{bib:10.1093/bioinformatics/btaa140}.
 
 \subsubsection{Synthesis}
 
@@ -36,9 +36,17 @@ This reduces the yield of the PCR process, since the polymerase cannot efficient
 Stretches of repetitive DNA or high GC content can lead to the formation of secondary structures, hindering the elongation of the growing strand. 
 Repetitive regions, as well as homopolymers, can also lead to polymerase slippage, a process in which polymerase briefly loses the connection to the template strand and reconnects at a different position with similar nucleotides content \cite{bib:102144}.
 
-% \subsubsection{Storage}
-% 
-% \subsubsection{Sequencing}
+\subsubsection{Storage}
+
+Further restrictions on the composition of the DNA construct are due to the cloning process: the GC content should be close to the GC percentage of the host genome and motifs used for the cloning process have to be avoided during the design of the DNA construct
+
+\subsubsection{Sequencing}
+
+The base composition of a DNA fragment is also an important factor for the successful retrieval of genetic information using DNA sequencing technologies
+Illumina sequencing, Oxford Nanopore and PacBio sequencing technologies are biased toward DNA with an intermediate GC content, leading to reduced coverage of regions with strongly deviating GC content \cite{bib:101093}. 
+Illumina and Nanopore sequencers also show an increased error rate in the presence of homopolymers \cite{bib:101093}.
+Depending on the sequencing method used, the resulting data show increased substitution rates for specific DNA patterns: for PacBio data, common substitution patterns are CG $\rightarrow$ CA and CG $\rightarrow$ TG, Nanopore data contain an increased amount of TAG $\rightarrow$ TGG and TAC $\rightarrow$ TGC substitutions \cite{bib:1012688} and a common substitution pattern in Illumina data is GGG $\rightarrow$ GGT \cite{bib:101186}.
+
 
 
 \subsection{Requirements}
