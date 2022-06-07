@@ -2,8 +2,8 @@
 %-*- coding: utf-8 -*-
 %@author : Romain Graux
 %@date : 2022 May 03, 12:27:08
-%@last modified : 2022 June 06, 09:53:08
-\label{chapter:sota-pcc}
+%@last modified : 2022 June 07, 14:39:01
+\label{sec:pcc}
 
 Numerous methods have been proposed to compress point clouds in the literature. They are usually based on different structures than a classical list of coordinates.                                
 Octrees, for example, have been widely used for this purpose \cite{bib:octree}. 
@@ -16,15 +16,15 @@ The octree representation consists of diving recursively the three dimensional s
     \label{fig:octree}
 \end{figure}
 
-% \begin{figure}
-%     \centering
-%     \includegraphics[width=0.6\textwidth]{voxelized.png}
-%     \caption{Voxelized representation of a point cloud}
-%     \label{fig:voxelized}
-% \end{figure}
+\begin{figure}
+    \centering
+    \includegraphics[width=0.6\textwidth]{voxelisation.png}
+    \caption{Voxelized representation of a point cloud}
+    \label{fig:voxelized}
+\end{figure}
 
 Compression algorithms using learning based autoencoders architectures have also demonstrated good performance. While some take as input point coordinates \cite{bib:9102866}, others take as input voxelized versions of the point clouds. 
-Voxelized point clouds consist of occupancy grid of regular spaced points so that several points are merged together in a single voxel.
+Voxelized point clouds consist of occupancy grid of regular spaced points so that several points are merged together in a single voxel as shown on Figure \ref{fig:voxelized}.
 A voxel is similar to a three dimensional pixel.
 These three dimensional grids can be then used as input for a \textit{3D convolutional layer}.
 

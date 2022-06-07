@@ -2,7 +2,7 @@
 %-*- coding: utf-8 -*-
 %@author : Romain Graux
 %@date : 2022 April 24, 11:46:53
-%@last modified : 2022 June 05, 17:01:33
+%@last modified : 2022 June 07, 17:55:22
 
 \documentclass{RomainGrauxThesis}
 
@@ -23,6 +23,7 @@
 \usepackage{xcolor}
 \usepackage{graphicx}
 \usepackage{amsmath} % for \text
+\usepackage{listings} % for code blocks
 \usepackage{url}
 \def\UrlBreaks{\do\/\do-}
 \usepackage[colorlinks=false, allcolors=purple]{hyperref}
@@ -33,7 +34,7 @@
 \author{\href{https://romaingraux.xyz}{Romain \textsc{Graux}}}
 \thesistitle{Point cloud compression for DNA based storage}
 \supervisor{
-    \href{https://people.epfl.ch/touradj.ebrahimi}{Dr. Touradj \textsc{Ebrahimi}}\\ 
+    \href{https://people.epfl.ch/touradj.ebrahimi}{Prof. Dr. Touradj \textsc{Ebrahimi}}\\ 
     \href{https://people.epfl.ch/davi.nachtigalllazzarotto}{Davi \textsc{Lazzarotto}}
 }
 \university{EPFL}
@@ -45,6 +46,29 @@
     \hypersetup{pdftitle=\ttitle} % Set the PDF's title to your title
     \hypersetup{pdfauthor=\authorname} % Set the PDF's author to your name
     \hypersetup{pdfkeywords=\keywordnames} % Set the PDF's keywords to your keywords
+}
+
+\definecolor{forestgreen}{RGB}{34,139,34}
+\definecolor{orangered}{RGB}{239,134,64}
+\definecolor{darkblue}{rgb}{0.0,0.0,0.6}
+\definecolor{gray}{rgb}{0.4,0.4,0.4}
+
+\lstset{
+  basicstyle=\ttfamily,
+  columns=fullflexible,
+  showstringspaces=false,
+  commentstyle=\color{gray}\upshape
+}
+
+\lstdefinelanguage{yaml}
+{
+  morestring=[b]",
+  morestring=[s]{>}{<},
+  morecomment=[s]{<?}{?>},
+  stringstyle=\color{black},
+  identifierstyle=\color{orangered},
+  keywordstyle=\color{orangered},
+  %morekeywords={xmlns,version,type}% list your attributes here
 }
 
 %% Helping functions

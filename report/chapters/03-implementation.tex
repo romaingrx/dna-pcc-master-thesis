@@ -2,10 +2,64 @@
 %-*- coding: utf-8 -*-
 %@author : Romain Graux
 %@date : 2022 June 05, 10:34:48
-%@last modified : 2022 June 05, 10:52:56
+%@last modified : 2022 June 07, 17:56:56
 
-\section{DNA latent representation}
 
-In this section, we will plug all parts together in order to implement a latent representation of DNA. With these pieces of DNA strands, we will be able to synthesis and encapsulate them in a real medium to preserve them.
+In this section, we want to build a complete pipeline from a raw point cloud to a DNA strand that will be later synthestized in a medium and kept for a long period (Could be dozen or even hundred of years). After this long period of time, we would like to recover our point cloud as faithful as possible to the original. 
 
-The first step in order to achieve this is to extract the features of the point clouds with the analysis transform of the model presented previsously.
+We thus have all the building blocks to construct this pipeline and be able to encode and decode point clouds. However, this pipeline will not be constructed to be the most efficient and optimized DNA code point cloud compression algorithm but it will be a baseline on which we can base ourselves to compare future models. 
+
+% TIKZ pour representer le full pipeline
+
+
+\section{Point cloud latent representation}
+
+The first step is to turn the point cloud into a smaller latent representation. For this purpose, we can use the point cloud compression model previously described in section \ref{sec:pcc} that has already learned the principal features of point clouds. 
+
+The latent representation $y$ contains a compressed representation with less information but still all the necessary information to reconstruct the original point cloud. From a block of shape $k \times k \times k$, once passed through the Analysis Transform, the latent reprsentation $y$ has a shape $\lceil\frac{k}{8}\rceil \times \lceil\frac{k}{8}\rceil \times \lceil\frac{k}{8}\rceil \times d$ with $d$ being the arbitrary latent depth. Therefore if the latent depth $d$ is well chosen, the latent representation contains all information to retrieve the original point cloud while being smaller.
+
+In our particular implementation, we chose a latent depth of $160$ which means that we indeed have a smaller shape since $8 \times 8 \times 8 \geq 160$. 
+
+Now that we indeed have a latent representation, we have to go to the next step, which is the JPeg DNA codec described in section \ref{sec:jpeg-dna-codec}, but this codec has some requierements that have to be met in order to achieve the best quality, nucleotide rate, all these details will be discuss in the next section.
+
+\section{Latent representation to Jpeg DNA codec}
+
+\subsection{Dimensionality}
+
+We end up with a $l \times l \times l \times d$ latent representation $y$ but since the codec is built for image purpose, it only accepts an image as input which is either of shape $H \times W$ (gray image) or $H \times W \times 3$ (RGB image). 
+Consequently, we have to tweak our latent representation $y$ so that it satisfies this requirement, we have several possibilities for that, I tried two different approaches:
+
+\begin{itemize}
+    \item The first approach is to merge the two inner dimension together, in that case we have a $l \times l^2 \times d$ shape. We can then encode several $l \times l^2$ images alogn the latent features dimension. This approach allows to process each feature "independently";
+    \item The second approach is more simple and consists of merging the three first dimensions together, hence we end up with a $l^3 \times d$ image. We can thus encode directly the full image with the codec.
+\end{itemize}
+
+Each approach has its own pros and cons. 
+
+The first one aims at treating each feature separately so that we can encode regarding each feature distribution and hope for less quantized values and in the end, a smaller number of oligos. Although, when encoding the final flat nucleotide stream, we have to add the length of each latent oligo length which is avoidable.
+
+The second as for it, is easier to compute since it is a single gray image like, so we have in the end directly a flat nucleotide stream for a block. 
+
+We will evaluate their performance in the section \ref{sec:performance} to see which one is preferable over the other.
+
+\subsection{Quantization}
+
+The other important aspect of the codec is the value type. The latent representation $y$ has a \textit{float} value type but the codec is built for \textit{uint8} value type. This means that we have to convert the latent representation $y$ to an \textit{uint8} value type while ensuring the $y$ range is mapped to the full \textit{uint8} range $[0, 255]$. 
+
+To do so, we can use a \textit{quantization} transform that will map the latent representation $y$ to the \textit{uint8} range. This quantization transform is a \textit{linear} transform that maps the latent representation $y$ to the \textit{uint8} range and finally rounded.
+The mapping can simply be described as: $y_q = \text{round} \left(255 \frac{y - \min(y)}{\max(y) - \min(y)}\right)$.
+
+The problem with this naive quantizer is that it assumes that $y$ has an uniform distribution and thus divides the range $[{\min(y), \max(y)}]$ into $255$ equally long gaps. 
+% The $y$ distribution is most likely not uniform.
+% (as shown on Figure \ref{fig:y-dist})
+
+\subsection{DCT}
+
+In the original JPEG codec, each $8 \times 8$ block of the images are first centered around $0$ (simply shift by $-128$) and then trasnformed into the $8 \times 8$ DCT values before being quantized with a default perceptual quantization table. 
+For our purposes, we will use a custom way to do the DCT that is more adapted to our needs considering that our input is not a regular image.
+Since we already have quantized \textit{uint8} values that are not perceptual values , we can directly used them as DCT coefficients.  
+But then, we will not be able to divide by a quantization table because it would directly impact our coefficients. 
+
+However, in our case, not dividing by a quantization table is a plus since they are built in order to keep a perceptual fidelity which means that all the high frequency DC are usually dropped and it would affect badly our recovered coefficients and in the end the recovered point clouds because the model is more sensitive to high frequency details than our human eyes.
+
+In the end, we have a codec that can encode our coefficients in a lossless manner. One downside of this non DCT codec is that all non-zero coefficients are always encoded, so we can not control the nucleotide stream length.
