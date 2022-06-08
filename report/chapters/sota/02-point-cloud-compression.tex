@@ -2,7 +2,7 @@
 %-*- coding: utf-8 -*-
 %@author : Romain Graux
 %@date : 2022 May 03, 12:27:08
-%@last modified : 2022 June 07, 14:39:01
+%@last modified : 2022 June 08, 11:15:52
 \label{sec:pcc}
 
 Numerous methods have been proposed to compress point clouds in the literature. They are usually based on different structures than a classical list of coordinates.                                
@@ -32,6 +32,7 @@ These three dimensional grids can be then used as input for a \textit{3D convolu
 The current state of the art for point cloud compression that we will use in this project is a model called "Latent Space Slicing For Enhanced Entropy Modeling in Learning-Based Point Cloud Geometry Compression" and that has been developed by Nicolas Frank, Davi Lazzarotto and Touradj Ebrahimi at the MMSPG laboratory (EPFL).
 
 \subsection{Model architecture}
+\label{subsec:model-architecture}
 
 \begin{figure}
     \centering
@@ -67,6 +68,6 @@ $$
 
 \noindent with $\alpha$ and $\gamma$ being configurable hyperparameters. This focal loss is a so-called \href{https://www.tensorflow.org/api_docs/python/tf/keras/losses/BinaryFocalCrossentropy}{binary weighted focal crossentropy loss}.
 
-The last step to recover the actual binary occupancy grid from the output probability occupancy grid $\tilde{x}$ is to apply a threshold $t$ and round every value above $t$ to $1$ and $0$ otherwise. While a naive approach would be to set this threshold $t$ to $0.5$, they decided to find the best threshold $t \in [0,1]$ such that it minimizes the point-to-point MSE \cite{bib:8296925} between the original and reconstructed rounded block.
+The last step to recover the actual binary occupancy grid for each voxel from the output probability occupancy grid $\tilde{x}$ is to apply a threshold $t$ and round every value above $t$ to $1$ and $0$ otherwise. While a naive approach would be to set this threshold $t$ to $0.5$, they decided to find the best threshold $t \in [0,1]$ such that it minimizes the point-to-point MSE \cite{bib:8296925} between the original and reconstructed rounded block.
 
 This technique was introduced by \cite{bib:9287077} and has proven to enhance reconstruction quality without significantly impacting the bitrate as it is only required to add a threshold $t \in [0,100]$ in the final bitstream.

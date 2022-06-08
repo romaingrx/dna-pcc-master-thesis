@@ -2,7 +2,7 @@
 %-*- coding: utf-8 -*-
 %@author : Romain Graux
 %@date : 2022 June 05, 10:34:48
-%@last modified : 2022 June 07, 17:56:56
+%@last modified : 2022 June 08, 14:20:48
 
 
 In this section, we want to build a complete pipeline from a raw point cloud to a DNA strand that will be later synthestized in a medium and kept for a long period (Could be dozen or even hundred of years). After this long period of time, we would like to recover our point cloud as faithful as possible to the original. 
@@ -22,7 +22,7 @@ In our particular implementation, we chose a latent depth of $160$ which means t
 
 Now that we indeed have a latent representation, we have to go to the next step, which is the JPeg DNA codec described in section \ref{sec:jpeg-dna-codec}, but this codec has some requierements that have to be met in order to achieve the best quality, nucleotide rate, all these details will be discuss in the next section.
 
-\section{Latent representation to Jpeg DNA codec}
+\section{Latent representation with Jpeg DNA codec}
 
 \subsection{Dimensionality}
 
@@ -43,6 +43,7 @@ The second as for it, is easier to compute since it is a single gray image like,
 We will evaluate their performance in the section \ref{sec:performance} to see which one is preferable over the other.
 
 \subsection{Quantization}
+\label{subsec:quantization}
 
 The other important aspect of the codec is the value type. The latent representation $y$ has a \textit{float} value type but the codec is built for \textit{uint8} value type. This means that we have to convert the latent representation $y$ to an \textit{uint8} value type while ensuring the $y$ range is mapped to the full \textit{uint8} range $[0, 255]$. 
 
@@ -62,4 +63,40 @@ But then, we will not be able to divide by a quantization table because it would
 
 However, in our case, not dividing by a quantization table is a plus since they are built in order to keep a perceptual fidelity which means that all the high frequency DC are usually dropped and it would affect badly our recovered coefficients and in the end the recovered point clouds because the model is more sensitive to high frequency details than our human eyes.
 
-In the end, we have a codec that can encode our coefficients in a lossless manner. One downside of this non DCT codec is that all non-zero coefficients are always encoded, so we can not control the nucleotide stream length.
+In the end, we have a codec that can encode our coefficients in a lossless manner. Unfortunately, one downside of this non DCT codec is that all non-zero coefficients are always encoded and thus never dropped, so we can not control the nucleotide stream length with this method. We will always have the best quality.
+
+\section{Nucleotide stream}
+
+We now have a full pipeline that can be used to encode and decode point clouds. The last step is to produce the actual nucleotide stream from the output of the codec and all intermiediate information that are needed in order to fully decode the stream.
+
+The intermediate informations needed to produce the nucleotide stream are:
+\begin{itemize}
+    \item The threshold used to turn the reconstructed block $\tilde{x}$ (the probability occupancy grid described in \ref{subsec:model-architecture}) as an \textit{uint8} value;
+    \item The oligo length used by the JPEG DNA codec (by default set to 200);
+    \item The quantization range used for the latent representation $y$ as described in \ref{subsec:quantization};
+    \item The shape of the latent representation $y$ in order to reshape the decoded array of the codec since we merge all inner dimensions together to encode with the codec;
+\end{itemize}
+
+To turn a byte array into a nucleotide stream, we naively assume that each two consecutive bits can be considered as a nucleotide. We can use the mapping  
+$00 \rightarrow \text{A}$,
+$01 \rightarrow \text{C}$,
+$10 \rightarrow \text{G}$,
+$11 \rightarrow \text{T}$.
+With this technique we can produce a $4$ nucleotide stream for each byte of the byte array.
+
+Here is how many nucleotides we can produce to represent our intermerdiate informations:
+\begin{itemize}
+    \item The threshold is a single byte since it is a \textit{uint8} value $\in [0, 100]$ so we can produce $4$ nucleotides;
+    \item The oligo length is also encoded in a single byte, it thus produces $4$ nucleotides as well;
+    \item The quantization range are represented as two \textit{float32} values, each value is encoded on $4$ bytes so we can produce a total of $32$ nucleotides for the quantization range;
+    \item The shape of the latent representation has the form $l \times l \times l \times d$ and each dimension is encoded on a single byte so we can produce a total of $16$ nucleotides for the shape;
+\end{itemize}
+
+The final stream is obtained by concatenating all the additional informations and the nucleotide stream. In the end we have a total of $4 + 4 + 32 + 16 + n$ nucleotides where $n$ is the number of nucleotides produced by the codec.
+
+\section{Reconstruction}
+
+Starting from the nucleotide stream, we can fully reconstruct the point doing by doing all steps in reverse order.
+First, we extract all the additional informations and the codec stream from the nucleotide stream. Then, we can decode the codec stream to reconstruct the latent representation $\tilde{y}$ and reshape it to the shape that was encoded in the stream.
+Then, we can decode the latent representation $\tilde{y}$ using the dequantization transform with the quantization range that was also encoded in the stream in order to obtained the reconstrcuted block $\tilde{x}$
+Finally, we can round the probabibility occupancy grid $\tilde{x}$ thanks to the threshold that was encoded in the stream and we can obtain the reconstructed binary occupancy grid.
