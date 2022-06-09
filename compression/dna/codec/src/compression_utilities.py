@@ -203,7 +203,7 @@ def unpack_tensor_multi(nucleotidestream):
             tf.ragged.constant(z_strings, dtype=tf.string),
             )
 
-def unpack_tensor_single(nucleotidestream):
+def unpack_tensor_single(nucleotidestream, get_header_length=False):
     """
     Unpack the tensor of nucleotides into a single nucelotide string.
 
@@ -243,6 +243,9 @@ def unpack_tensor_single(nucleotidestream):
 
     # The default oligo length is 200.
     assert (len(nucleotidestream) - seeker) % oligo_length == 0, "Should be a multiple of oligo length"
+    if get_header_length:
+        return seeker
+
     z_string = [nucleotidestream[idx:idx+oligo_length] for idx in range(seeker, len(nucleotidestream), oligo_length)]
 
     return (
@@ -252,7 +255,6 @@ def unpack_tensor_single(nucleotidestream):
             tf.constant(y_shape, dtype=tf.int32),
             tf.constant(z_string, dtype=tf.string),
             )
-
 
 def po2po(block1_pc, block2_pc):
     """

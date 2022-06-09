@@ -3,7 +3,7 @@
 """
 @author : Romain Graux
 @date : 2022 May 13, 15:47:09
-@last modified : 2022 June 04, 21:55:32
+@last modified : 2022 June 09, 17:57:32
 """
 
 import os
@@ -21,15 +21,19 @@ import tensorflow as tf
 from pyntcloud import PyntCloud
 from multiprocessing import Pool
 from jpegdna.codecs import JpegDNA
+
+import seaborn as sns
+sns.set_style('whitegrid')
 import matplotlib.pyplot as plt
 
 from main import CompressionModel, BatchSingleChannelJpegDNA
 from src.pc_io import load_pc, get_shape_data, write_df, pa_to_df
 from src.processing import pc_to_occupancy_grid
+from fasta_io import latent_representation_to_fasta
 from utils import pc_dir_to_ds, extract_path, extract_ext, extract_name
 
 
-def align_files(*directories):
+def align_files(*directories, return_names=False):
     """
     Allign all files based on the name of each file and zip them.
     """
@@ -39,8 +43,13 @@ def align_files(*directories):
     extentions = [extract_ext(directory[0]) for directory in directories] # Assume same extension for all files in a directory
     names = [set([extract_name(fname) for fname in directory]) for directory in directories]
     common_names = set.intersection(*names)
+    common_names = sorted(common_names)
 
-    return [[f'{path}/{name}.{ext}' for name in common_names] for path, ext in zip(paths, extentions)]
+    files = [[f'{path}/{name}.{ext}' for name in common_names] for path, ext in zip(paths, extentions)]
+
+    if return_names:
+        return files + [common_names]
+    return files
 
 def load_file(fname):
     """
@@ -53,15 +62,18 @@ def load_file(fname):
         return pickle.load(open(fname, 'rb'))
     elif ext == 'ply':
         return PyntCloud.from_file(fname).points
+    elif ext in ('dna', 'fasta', 'fastq'):
+        with open(fname, 'r') as f:
+            return f.read()
     else:
-        raise Exception(f'Unknown extension {ext}')
+        return fname
 
 def lazy_loader(files, args):
     """
     Load files in a lazy fashion.
     """
     for slice_files in files:
-        yield np.squeeze([load_file(fname) for fname in slice_files])
+        yield [load_file(fname) for fname in slice_files]
 
 def loader(files, args):
     """
@@ -69,13 +81,16 @@ def loader(files, args):
     """
     return [load_file(fname) for fname in files]
 
-def load_io_files(args, exception=[]):
+def load_io_files(args, exception=[], only=[], return_names=False):
     """
     Load all files contained in the io subflag.
     """
-    raw_files = [glob(f"{directory}/*") for name, directory in args.io.items() if name not in exception]
-    files = align_files(*raw_files)
-    return lazy_loader(zip(*files) if len(files)>1 else np.reshape(files, (-1, 1)), args)
+    io = args.io if hasattr(args, 'io') else args
+    cdt_file = lambda name: name not in exception and (not len(only) or name in only)
+    raw_files = [glob(f"{directory}/*") for name, directory in io.items() if cdt_file(name)]
+    files = align_files(*raw_files, return_names=True)
+    loader = lazy_loader(zip(*files) if len(files)>1 else np.reshape(files, (-1, 1)), args)
+    return loader
 
 # All tasks
 
@@ -148,8 +163,6 @@ def evaluate_y_reconstruction(args):
 
 
 
-
-
 def quantization(args):
     """
     Quantize the float latent representation into quint8
@@ -166,10 +179,10 @@ def quantization(args):
         quantize_range = np.min(y.numpy()), np.max(y.numpy())
         yq, *_ = tf.quantization.quantize(
                 y, *quantize_range, tf.quint8
-        )
+                )
 
 
-def study_output_analysis(args):
+def study_reconstruction_block(args):
     """
     Study the output of the analysis transform
     """
@@ -177,9 +190,31 @@ def study_output_analysis(args):
 
     files = load_io_files(args)
     for x, y, y_hat, x_hat in files:
-        x.plot(kind='hist', bins=64, color='blue', subplots=True)
-        x_hat.plot(kind='hist', bins=64, color='blue', subplots=True)
+        cols = ["x", "y", "z"]
+        x[cols].plot(kind='hist', bins=64, color='blue', subplots=True)
+        x_hat[cols].plot(kind='hist', bins=64, color='blue', subplots=True)
         plt.show()
+        break
+
+def study_latent_representation(args):
+    global files, y, y_hat
+
+    files = load_io_files(args, only=['y', 'y_hat'])
+    for y, y_hat in files:
+        break
+        sns.displot(y.reshape((-1,)), kde=True)
+        sns.displot(y_hat.reshape((-1,)), kde=True)
+        plt.show()
+
+
+def to_fastq(args):
+    global file, fastq, _args
+    _args = args
+    files = load_io_files(args, only=['z'], return_names=True)
+    for file, name in files:
+        fasta = latent_representation_to_fastq(file, 200)
+        with open(f"fasta/in/{name}.fasta", "w+") as fd:
+            fd.write(fasta)
 
 
 
@@ -190,13 +225,11 @@ def main(cfg: OmegaConf) -> None:
     global args
     args = omegaconf2namespace(cfg)
 
-    tasks = ["bypass_dna", "quantization_tables", "quantization", "evaluate_y_reconstruction", "play", "study_output_analysis"]
-    if args.task not in tasks:
-        raise ValueError(f"Task {args.task} not supported, please choose between {tasks}")
-
-    globals()[args.task](args)
-
-
+    try:
+        task = globals()[args.task]
+    except KeyError:
+        raise ValueError(f"Task {args.task} not supported")
+    task(args)
 
 if __name__ == '__main__':
     main()
