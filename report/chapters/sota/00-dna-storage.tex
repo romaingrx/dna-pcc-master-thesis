@@ -2,7 +2,7 @@
 %-*- coding: utf-8 -*-
 %@author : Romain Graux
 %@date : 2022 May 03, 12:22:56
-%@last modified : 2022 June 06, 14:46:42
+%@last modified : 2022 June 10, 17:26:42
 
 As we produce more data every year, we need to find a way to store it efficiently. Currently, we store our data in big data center consuming a lot of energy to keep these informations in electronic devices, \illustrate{Find the consumption of data centers}
 
@@ -14,6 +14,59 @@ But it can not be applied to all data types, for example, it is not possible yet
 
 This does not mean that there are no applications for DNA based storage. DNA based storage can be used for long term media preservation archives (so called cold media storage) which are infrequently accessed and thus do not need low information retrieval latency.
 
+\subsection{DNA}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=0.8\textwidth]{dna-structure}
+    \caption{DNA structure}
+    \label{fig:dna-structure}
+\end{figure}
+
+Desoxyribonucleic acid (DNA) is a chemical molecule composed of two polynucleotide chains that coil around each other to forn a double helix carrying genetic information. DNA is the primary information carrier in living organisms, it is the building block of all life carrying instructions for the development, functionning, growth and reproduction of all known organisms and many viruses. 
+
+The two chains are known as polynucleotides as they are composed of monomeric units called nucleotides as described on Figure \ref{fig:dna-structure}.
+Each nucleotide is composed of one of the four nitrogen bases (adenine [A], cytosine [C], guanine [G] and thymine [T]), a sugar called deoxyribose and a phosphate group.
+The nucleotides are linked to one another in a chain by a covalent bond between the sugar of one nucleotide and the phosphate group of the next, resulting in a alternating sugar-phosphate backbone.
+The nucleotides of the two separate chains are joined together by an hydrogen bond between their nitrogen bases according to base pairing rules (A-T, G-C) resulting in a double helix.
+The nitrogen bases are divided into two groups, the pyrimidine bases (C and T) and the purine bases (A and G).
+
+Both strands of DNA store the same information but in complementary pairs. The two strands of DNA run in opposite directions and are thus antiparallel. The direction is determined by the 5' to 3' or 3' to 5' direction.
+
+\subsection{Usage}
+
+DNA is a powerfull tool for storing information for biological systems so it can also find its way in the DNA storage.
+DNA storage can be used for applications that require:
+
+\begin{itemize}
+    \item \textbf{High information density}:
+In 2017, scientists at Columbia University and the New York Genome Center published a method which allows perfect retrieval of information from a density of $215$ petabytes per gram of DNA \cite{bib:erlich_yaniv_2017_889697};
+    \item \textbf{Data longevity}: Information stored in DNA can last for decades or centuries compared to conventional media which are replaced every 3-5 years \cite{bib:33649304};
+    \item \textbf{Low energy consumption}: DNA does not use energy to store information, energy is only used to help the degradation of the DNA;
+    \item \textbf{Ease of replication}: Thanks to the Polymeras Chain Reaction, DNA can be replicated easily \cite{bib:Mullis_1990}.
+\end{itemize}
+
+\subsection{End-to-end DNA storage}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=0.6\textwidth]{dna-storage-pipeline}
+    \caption{DNA storage pipeline}
+    \label{fig:dna-storage-pipeline}
+\end{figure}
+
+
+The way to store binary information into DNA based medium storage and then retrieve it back is called end-to-end DNA storage. It has several steps as seen on Figure \ref{fig:dna-storage-pipeline}.
+
+\begin{itemize}
+    \item \textbf{Encoding}: Transform any kind of infromation into a nucleotide stream (A, C, G or T);
+    \item \textbf{Synthesis}: Synthesize the nucleotide stream into an actual DNA molecule;
+    \item \textbf{Encapsulation}: Encapsulate the DNA molecule into a DNA medium for long term storage;
+    \item \textbf{Thermal damage}: The DNA medium can be damaged by thermal damage, this can cause the DNA to break or be damaged during the storage process;
+    \item \textbf{Release}: The DNA molecules can be released from the medium, it gives us the ability to retrieve the information back.
+    \item \textbf{Sequencing}: The DNA molecules are sequenced on a computer, this allows us to digitally retrieve the information back as DNA sequences.
+    \item \textbf{Decoding}: The DNA sequences are decoded back into the original information.
+\end{itemize}
 
 \subsection{Constraints}
 
