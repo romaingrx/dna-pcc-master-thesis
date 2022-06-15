@@ -2,7 +2,7 @@
 %-*- coding: utf-8 -*-
 %@author : Romain Graux
 %@date : 2022 June 05, 10:34:48
-%@last modified : 2022 June 08, 14:20:48
+%@last modified : 2022 June 16, 00:04:36
 
 
 In this section, we want to build a complete pipeline from a raw point cloud to a DNA strand that will be later synthestized in a medium and kept for a long period (Could be dozen or even hundred of years). After this long period of time, we would like to recover our point cloud as faithful as possible to the original. 
@@ -20,13 +20,17 @@ The latent representation $y$ contains a compressed representation with less inf
 
 In our particular implementation, we chose a latent depth of $160$ which means that we indeed have a smaller shape since $8 \times 8 \times 8 \geq 160$. 
 
-Now that we indeed have a latent representation, we have to go to the next step, which is the JPeg DNA codec described in section \ref{sec:jpeg-dna-codec}, but this codec has some requierements that have to be met in order to achieve the best quality, nucleotide rate, all these details will be discuss in the next section.
+We also have to make a choice on which model to use for the transfer learning of the weights since several models are available for different bitrate/distortion tradeoffs. As we will see in the next sections, the nucleotiderate mostly depends on the input shape without impacting the distortion no matter which one is chosen. Thus to get the best reconstruction possible, we will choose the highest $\lambda$ value (1750) for the model. The $\lambda$ value is weighting the focal loss in the global loss used to train the model as explained in Section~\ref{sec:pcc}.
 
-\section{Latent representation with Jpeg DNA codec}
+Now that we have a latent representation, we have to go to the next step, which is the JPEG DNA codec described in section \ref{sec:jpeg-dna-codec}, but this codec has some requierements that have to be met in order to achieve the best quality, nucleotide rate, all these details will be discuss in the next section.
+
+\section{Latent representation with JPEG DNA codec}
+
+In this part, we will use the JPEG DNA codec but not the full one, we will drop all the part related to JPEG and thus encode directly the coefficients that are normally produced by the last DCT transform. So the input of the codec will be quantized discrete coefficients. To meet these requirements, we will have to change few things from the latent representation $y$.
 
 \subsection{Dimensionality}
 
-We end up with a $l \times l \times l \times d$ latent representation $y$ but since the codec is built for image purpose, it only accepts an image as input which is either of shape $H \times W$ (gray image) or $H \times W \times 3$ (RGB image). 
+The output of the Analysis block is a $l \times l \times l \times d$ latent representation $y$ but since the codec is built for image purpose, it only accepts an image as input which is either of shape $H \times W$ (gray image) or $H \times W \times 3$ (RGB image). 
 Consequently, we have to tweak our latent representation $y$ so that it satisfies this requirement, we have several possibilities for that, I tried two different approaches:
 
 \begin{itemize}
@@ -40,30 +44,41 @@ The first one aims at treating each feature separately so that we can encode reg
 
 The second as for it, is easier to compute since it is a single gray image like, so we have in the end directly a flat nucleotide stream for a block. 
 
-We will evaluate their performance in the section \ref{sec:performance} to see which one is preferable over the other.
+Finally, as the first one does not offer better performance while enlarging the final stream length (and thus impact the final nucleotiderate), we will simply merge the first three dimensions (dimensions of the feature block) as proposed in the second approach to produce a $2$D tensor compatible with the codec.
 
 \subsection{Quantization}
 \label{subsec:quantization}
 
-The other important aspect of the codec is the value type. The latent representation $y$ has a \textit{float} value type but the codec is built for \textit{uint8} value type. This means that we have to convert the latent representation $y$ to an \textit{uint8} value type while ensuring the $y$ range is mapped to the full \textit{uint8} range $[0, 255]$. 
+The other important aspect of the codec is the value type. The Analysis block produces continuous values $y \in [-\inf, \inf]$ due to the nature of convolutional layer and the linear activation function of the last layer but the codec is built to encode discrete integer values as it is the case for the DCT coefficients. This means that we have to convert the latent representation $y$ to an integer value type while ensuring the $y$ range is mapped to a range $[0, span]$ as a bijective maneer. Here the $span$ value is fixed value chosen at compression time as a quality parameter. It is used as a nucleotiderate/distortion tradeoff. The greater the $span$ value, the better the quality and the greater the nucleotiderate. 
+Contrastly, the lower the $span$ value, the worse the quality and the lower the nucleotiderate.
 
-To do so, we can use a \textit{quantization} transform that will map the latent representation $y$ to the \textit{uint8} range. This quantization transform is a \textit{linear} transform that maps the latent representation $y$ to the \textit{uint8} range and finally rounded.
-The mapping can simply be described as: $y_q = \text{round} \left(255 \frac{y - \min(y)}{\max(y) - \min(y)}\right)$.
+To implement such a quantization transform, we can naively do a linear mapping between $[\min{y}, \max{y}]$ to $[0, span]$. With this transform, we create $span+1$ ranges of equal length $\dfrac{\max{y} - \min{y}}{span}$ in which the $y$ values will fall. 
+It assumes that $y$ is uniformly distributed because it gives the same range length in which to fall for each $y$ value.
 
-The problem with this naive quantizer is that it assumes that $y$ has an uniform distribution and thus divides the range $[{\min(y), \max(y)}]$ into $255$ equally long gaps. 
-% The $y$ distribution is most likely not uniform.
-% (as shown on Figure \ref{fig:y-dist})
+Finally, to get the quantized integer value, we can simply round the final mapped values and it will gives us at most $span+1$ integer values to encode with the JPEG DNA codec.
+
+The mapping can simply be described as: 
+$$z = \text{round} \left(span \frac{y - \min{y}}{\max{y} - \min{y}}\right)$$.
 
 \subsection{DCT}
 
-In the original JPEG codec, each $8 \times 8$ block of the images are first centered around $0$ (simply shift by $-128$) and then trasnformed into the $8 \times 8$ DCT values before being quantized with a default perceptual quantization table. 
-For our purposes, we will use a custom way to do the DCT that is more adapted to our needs considering that our input is not a regular image.
-Since we already have quantized \textit{uint8} values that are not perceptual values , we can directly used them as DCT coefficients.  
-But then, we will not be able to divide by a quantization table because it would directly impact our coefficients. 
+In the original JPEG codec, each $8 \times 8$ block of the images are first centered around $0$ (simply shift by $-128$) and then transformed into the $8 \times 8$ DCT values before being quantized with a default perceptual quantization table. 
+For our purposes, we will use a custom way to do the DCT that is more adapted to our needs considering that we already have quantized coefficients.
 
-However, in our case, not dividing by a quantization table is a plus since they are built in order to keep a perceptual fidelity which means that all the high frequency DC are usually dropped and it would affect badly our recovered coefficients and in the end the recovered point clouds because the model is more sensitive to high frequency details than our human eyes.
+Because they are built for perceptual fidelity, we will not be dividing by quantization tables and thus will not have the long tail of $0$'s after the zigzag transform that normally appears for high frequencies DCT coefficients. All coefficients will most likely not be $0$, so we will have to encode them all.
 
-In the end, we have a codec that can encode our coefficients in a lossless manner. Unfortunately, one downside of this non DCT codec is that all non-zero coefficients are always encoded and thus never dropped, so we can not control the nucleotide stream length with this method. We will always have the best quality.
+All these transforms can be seen as a block represented on Figure~\ref{fig:reshape+quantization} that first reshape the $4$ dimensional tensor into a $2$ dimensional one and then quantize it with the approach seen above.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.5\textwidth]{jpegdna/transform}
+    \caption{Reshape + quantization layers}
+    \label{fig:reshape+quantization}
+\end{figure}
+
+% However, in our case, not dividing by a quantization table is a plus since they are built in order to keep a perceptual fidelity which means that all the high frequency DC are usually dropped and it would affect badly our recovered coefficients and in the end the recovered point clouds because the model is more sensitive to high frequency details than our human eyes.
+% 
+% In the end, we have a codec that can encode our coefficients in a lossless manner. Unfortunately, one downside of this non DCT codec is that all non-zero coefficients are always encoded and thus never dropped, so we can not control the nucleotide stream length with this method. We will always have the best quality.
 
 \section{Nucleotide stream}
 
@@ -93,6 +108,17 @@ Here is how many nucleotides we can produce to represent our intermerdiate infor
 \end{itemize}
 
 The final stream is obtained by concatenating all the additional informations and the nucleotide stream. In the end we have a total of $4 + 4 + 32 + 16 + n$ nucleotides where $n$ is the number of nucleotides produced by the codec.
+
+\section{End-to-end model}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=0.95\textwidth]{all}
+    \caption{The full end-to-end mode that turns voxelized point clouds into a DNA stream}
+    \label{fig:end-to-end}
+\end{figure}
+
+With all theses changes, we now have a fully working end-to-end model capable of compressing a voxelized point cloud into a DNA stream respecting some constraints (homopolymers and kmer) thanks to PAIRCODE and the Goldman encoding. The model is shown on Figure~\ref{fig:end-to-end}.
 
 \section{Reconstruction}
 
