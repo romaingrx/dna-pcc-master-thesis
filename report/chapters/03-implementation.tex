@@ -22,7 +22,7 @@ In our particular implementation, we chose a latent depth of $160$ which means t
 
 We also have to make a choice on which model to use for the transfer learning of the weights since several models are available for different bitrate/distortion tradeoffs. As we will see in the next sections, the nucleotiderate mostly depends on the input shape without impacting the distortion no matter which one is chosen. Thus to get the best reconstruction possible, we will choose the highest $\lambda$ value (1750) for the model. The $\lambda$ value is weighting the focal loss in the global loss used to train the model as explained in Section~\ref{sec:pcc}.
 
-Now that we have a latent representation, we have to go to the next step, which is the JPEG DNA codec described in section \ref{sec:jpeg-dna-codec}, but this codec has some requierements that have to be met in order to achieve the best quality, nucleotide rate, all these details will be discuss in the next section.
+Now that we have a latent representation, we have to go to the next step, which is the JPEG DNA codec described in section \ref{subsec:jpegdna}, but this codec has some requierements that have to be met in order to achieve the best quality, nucleotide rate, all these details will be discuss in the next section.
 
 \section{Latent representation with JPEG DNA codec}
 

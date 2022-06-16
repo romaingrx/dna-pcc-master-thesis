@@ -4,7 +4,7 @@
 \LoadClass{report}
 
 \RequirePackage{graphicx} % Required to include images
-\graphicspath{{./}{./docs/images/}} % Specifies where to look for included images
+\graphicspath{{./}{./docs/images/}{./docs/plots/img/}} % Specifies where to look for included images
 
 \NewDocumentCommand{\thesistitle} { o m }{%
  \IfValueTF{#1}{\def\shorttitle{#1}}{\def\shorttitle{#2}}%
