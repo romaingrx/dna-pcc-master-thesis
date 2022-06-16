@@ -2,7 +2,7 @@
 %-*- coding: utf-8 -*-
 %@author : Romain Graux
 %@date : 2022 June 07, 17:49:15
-%@last modified : 2022 June 16, 16:14:49
+%@last modified : 2022 June 16, 22:07:19
 
 \label{sec:performance}
 
@@ -12,16 +12,21 @@
 Now that we have a fully working model, it is time to evaluate its performance. On the Figure~\ref{fig:mitch-all}, we can see the impact of the span value on the distortion of the \textit{mitch} point cloud with a voxelized depth of $8$, which corrresponds to a voxelized point cloud of size $256 \times 256 \times 256$. 
 The whole point cloud has been partitioned into $64 \times 64 \times 64$ smaller point clouds, which have been fed to the analysis transform.
 
-\begin{figure}
+\begin{figure}[ht]
     \centering
     \includegraphics[width=0.9\textwidth]{mesh/all/mitch/results_}
     \caption{Mitch point cloud distortion regarding the span value with a voxelized depth of $8$}
     \label{fig:mitch-all}
 \end{figure}
 
+We see some artifacts on the edges of the point cloud blocks, but the distortion is still low. These artifacts are probably due to the linear quantization since it is the only lossy part of the algorithm, the distribution of the laent representation plays a role in these artifacts but we will have a closer look with the rate-distortion anlysis.
+
 \section{Rate-distortion analysis}
 
-\begin{figure}
+To evaluate how well the model is performing, we can use a rate-distortion plot to compare how well the model can reconstruct the point cloud at a particular nucleotide rate. With this kind of plot, we can find a tradeoff to maximize the reconstruction fidelity while minimizing the number of nucleotides required to encode it.
+In this case, the distortion is mesured with a D1 PSNR metric which is the PSNR of the point to point MSE between the reconstructed point cloud and the original point cloud (regarding the closest neighbour to each point).
+
+\begin{figure}[ht]
     \centering
     \includegraphics[width=0.9\textwidth]{rate_distortion_span_full2}
     \caption{Rate-distortion analysis regarding the nucleotiderate (controlled by the span value)}
@@ -37,6 +42,46 @@ Weirdly, the ipanemaCut~\ref{fig:ipanema-cut} shows a much higher nucleotide rat
 
 Finally, we can observe that we obtain a maximum PSNR around $60$ quite quickly and that it is no longer increasing with a higher nucleotide rate. It can be explained by the linear quantization that is the only lossy part of the algorithm. Since the distribution of the latent reprsentation is non uniform, as seen on Figure~\ref{fig:quantized-y-1000}, it can explain why the quantization is sub-optimal to turn continuous values into discrete ones.
 
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=0.9\textwidth]{rate_distortion_standards}
+    \caption{Rate-distortion analysis regarding the bitarte for the standard model described in section~\ref{sec:pcc}}
+    \label{fig:rate-distortion-standards}
+\end{figure}
+
+If we compare with the rate-distortion analysis for the standard model, we can see that the PSNR is higher even with the smallest $\lambda$ value. These bitrates have been computed for the following $\lambda$ values:
+$$
+\lambda \in \{40,200,400,700,1000,1750\}
+$$
+
+We can observe that the bitrate and the distortion depend more on the point cloud that is being encoded than on the DNA version. It is due to the fact that in this case, the latent representation $y$ is entropy encoded is done per slice, using hyper-analysis entropy parameters and previous slices parameters, which helps a lot quantizing the actual learned distributions per slice. It is thus really adaptable to each point cloud which is not the case of the DNA model since only the whole quantized latent representation is encoded by the JPEG DNA codec. 
+Furthermore, the LRP of the standard point cloud compressor helps predicting the error introduced by the quantization and this part is clearly not present in our DNA version, meaning that the quantization is always lost.
+
+If we had wanted to do a naive mapping of the compressed bits to nucleotides, we would have had mapped a single nucleotide every $2$ bits. So we would have ended up with a nucleotide rate of half the bitrate we have on this plot for the same distortion. 
+Unfortunately, this naive mapping does not take into account the constraints of the GC-content and homopolymers that are taken into account in the PAIRCODE and Goldman algorithms used in the JPEG DNA codec.
+
 \section{DNA storage simulation}
 
-\tocontinue{}
+In order to see how well the model is robust against DNA synthesis, storage and sequencing errors, we will simulate a compressed DNA stream with the MESA simulator. To do that we need to split our full stream into fixed length sequences, called \textit{oligos}. In this simulation we will used the default parameters \ref{yaml:mesa-config} with oligos of length $200$, a storage period of $2$ months, an ErrASE synthesis, $40$ PCR cycles to amplify the oligos, a Taq polymerase and we will store the oligos in a E coli host. With these settings, we can now pass a full \textit{fasta} file to the MESA server that will simulate the full process of synthesis, storage and sequencing and give us back the modified sequences. After merging back together all modified sequences into a single stream, we can pass stream to our decoder that will reconstruct the point cloud from it. 
+
+On the Figure~\ref{fig:simulated-sphere}, you can observe a toy example that has been simulated with the MESA simulator and the parameters specified above. This point cloud is a sphere of size $64 \times 64 \times 64$.
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=0.9\textwidth]{mesh/sphere_simulation/fig}
+    \caption{Simulated DNA stream for a $64$ voxels width sphere}
+    \label{fig:simulated-sphere}
+\end{figure}
+
+As you can observe, the reconstructed point cloud is not the same as the original one. This is due to the JPEG DNA codec behavior that cannot reconstruct a block if the codeword can not be found in the codebook belonging to the decoded category, in which case it outputs a $8 \times 8$ block of zeros.
+
+\begin{figure}[ht]
+    \centering
+    \resizebox{0.9\textwidth}{!}{\input{docs/plots/pgf/latent_representation_errors.pgf}}
+    \caption{Latent representation $y$ before simulation and reconstructed latent representation $\tilde{y}$ after simulation distributions}
+    \label{fig:simulated-latent-representation}
+\end{figure}
+
+
+If we observe on Figure~\ref{fig:simulated-latent-representation} the latent representation distribution directly after the analysis block (not quantized) and the distribution of the reconstructed latent representation $\tilde{y}$ after simulating the DNA stream through the MESA simulator with the parameters mentionned above. 
+We can clearly observe that the initial $y$ is concentrated around $0$ while the reconstructed $\tilde{y}$ is concentrated around $-31$ which corresponds to the minimum value of $y$. It means that the JPEG DNA codec was not able to decode the stream and thus it produced a lot of $0$ in the decoded array which is mapped to the minimum value of $y$ once dequantized.

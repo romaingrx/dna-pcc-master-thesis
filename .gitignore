@@ -14,13 +14,33 @@
 
 # Latex aux files
 *.aux
+*.cb
+*.cb2
 *.fdb_latexmk
 *.fls
+*.fmt
+*.fot
+*.lof
 *.log
+*.lot
 *.out
 *.synctex.gz
+*.toc
+.*.lb
+# Latex bibliographic files
 *.bbl
+*.bcf
 *.blg
+*-blx.aux
+*-blx.bib
+*.run.xml
+# Build tool auxiliary files:
+*.fdb_latexmk
+*.synctex
+*.synctex(busy)
+*.synctex.gz
+*.synctex.gz(busy)
+*.pdfsync
 
 # py files
 *.idea

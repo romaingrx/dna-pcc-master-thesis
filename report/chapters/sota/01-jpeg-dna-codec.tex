@@ -2,7 +2,7 @@
 %-*- coding: utf-8 -*-
 %@author : Romain Graux
 %@date : 2022 June 06, 10:01:02
-%@last modified : 2022 June 16, 16:11:51
+%@last modified : 2022 June 16, 19:09:47
 
 \subsection{Goldman coding}
 \begin{figure}
@@ -94,6 +94,11 @@ And for each category, we have a fixed number of codewords with fixed length in 
         \item $7 \rightarrow 110660$ words of length $9$
 \end{itemize}
 \end{minipage}
+
+\vspace{1em}
+
+The only difference between the AC and the DC coding is that the DC coding is always encoded with the category and then the codeword in a particular codebook. But due to the nature of the quantization and the zigzag, there is a lot of following zeros in the AC coefficients, so each time there is a $0$ a counter is incremented at encoding time until it reaches $16$, in which case, a particular codeword is append to the stream and the counter is reinitialized to $0$. 
+If a non-zero value happens before the counter reaches $16$, the number of zeros (between $1$ and $15$) is coupled with the category of the current AC coefficient, the counter is reinitialized to $0$ and the values are encoded the same way as described for the DC values.
 
 %    \begin{lstlisting}[language=python]
 %def find_category_ac(value):

@@ -2,7 +2,7 @@
 %-*- coding: utf-8 -*-
 %@author : Romain Graux
 %@date : 2022 April 24, 11:46:53
-%@last modified : 2022 June 16, 16:21:46
+%@last modified : 2022 June 16, 16:21:53
 
 \documentclass{RomainGrauxThesis}
 
@@ -25,6 +25,7 @@
 \usepackage{amsmath} % for \text
 \usepackage{listings} % for code blocks
 \usepackage{pgf} % for plots
+\newcommand{\includepgf}[2]{\resizebox{#1}{!}{\input{#2}}}
 \usepackage{subcaption} % for subcaption, subfigure
 \usepackage{url}
 \def\UrlBreaks{\do\/\do-}
