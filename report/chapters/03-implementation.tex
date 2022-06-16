@@ -2,7 +2,7 @@
 %-*- coding: utf-8 -*-
 %@author : Romain Graux
 %@date : 2022 June 05, 10:34:48
-%@last modified : 2022 June 16, 00:04:36
+%@last modified : 2022 June 16, 00:24:41
 
 
 In this section, we want to build a complete pipeline from a raw point cloud to a DNA strand that will be later synthestized in a medium and kept for a long period (Could be dozen or even hundred of years). After this long period of time, we would like to recover our point cloud as faithful as possible to the original. 
@@ -69,7 +69,7 @@ Because they are built for perceptual fidelity, we will not be dividing by quant
 
 All these transforms can be seen as a block represented on Figure~\ref{fig:reshape+quantization} that first reshape the $4$ dimensional tensor into a $2$ dimensional one and then quantize it with the approach seen above.
 
-\begin{figure}[h]
+\begin{figure}
     \centering
     \includegraphics[width=0.5\textwidth]{jpegdna/transform}
     \caption{Reshape + quantization layers}
