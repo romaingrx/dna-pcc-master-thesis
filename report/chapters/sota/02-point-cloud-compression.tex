@@ -2,7 +2,7 @@
 %-*- coding: utf-8 -*-
 %@author : Romain Graux
 %@date : 2022 May 03, 12:27:08
-%@last modified : 2022 June 17, 15:25:45
+%@last modified : 2022 June 17, 17:39:08
 \label{sec:pcc}
 
 Numerous methods have been proposed to compress point clouds in the literature. They are usually based on different structures than a standard list of coordinates.                                
@@ -11,16 +11,18 @@ The octree representation consists of dividing recursively the three dimensional
 
 \begin{figure}
     \centering
-    \includegraphics[width=0.6\textwidth]{octree.png}
-    \caption{Octree representation of a point cloud}
-    \label{fig:octree}
-\end{figure}
-
-\begin{figure}
-    \centering
-    \includegraphics[width=0.6\textwidth]{voxelisation.png}
-    \caption{Voxelized representation of a point cloud}
-    \label{fig:voxelized}
+    \begin{subfigure}{0.5\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{octree.png}
+        \caption{Octree representation of a point cloud}
+        \label{fig:octree}
+    \end{subfigure}
+    \begin{subfigure}{0.5\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{voxelisation.png}
+        \caption{Voxelized representation of a point cloud}
+        \label{fig:voxelized}
+    \end{subfigure}
 \end{figure}
 
 Compression algorithms using learning based auto-encoders architectures have also demonstrated good performance. While some take as input point coordinates \cite{bib:9102866}, others take as input voxelized versions of the point clouds. 
@@ -35,7 +37,7 @@ The current state of the art for point cloud compression employed in this projec
 \subsection{Model architecture}
 \label{subsec:model-architecture}
 
-\begin{figure}
+\begin{figure}[htb]
     \centering
     \includegraphics[width=0.8\textwidth]{pcc-geo-slicing-architecture.png}
     \caption{The "Latent Space Slicing For Enhanced Entropy Modeling in Learning-Based Point Cloud Geometry Compression" architecture with $2$ slices.}

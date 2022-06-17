@@ -2,4 +2,16 @@
 %-*- coding: utf-8 -*-
 %@author : Romain Graux
 %@date : 2022 June 07, 11:28:34
-%@last modified : 2022 June 07, 11:28:34
+%@last modified : 2022 June 17, 19:23:52
+
+After observing all the results, we can say that we have indeed built a working end-to-end point cloud compressor for DNA based storage capable of producing DNA stream sequences and recover the point clouds from them. 
+We can also say that the end-to-end point cloud compressor is adaptive, the quality over rate can be tuned by the user as seen on the rate-distortion tradeoff curve. 
+
+The model is one of the first to be used in the field of point cloud compression for DNA storage and thus is a good starting point for future work but can not be considered as a complete and optimal solution since it uses several implementations that are not initially built for our purpose.  
+
+Improvements have to be done on the nucleotide rate and the achievable reconstruction distortion with the highest quality parameters. 
+Improvements have also to be done on the robustness of the model and the ability to handle noise in the compressed domain.
+These improvements can be done either by entirely rebuilding the model architecture or by adapting the different model parts to our needs.
+
+As previsouly said, this is one of the first model in the world that compress point clouds into DNA sequences.
+It therefore opens the door to this interesting and topical subject and can serve as a baseline to compare future models.

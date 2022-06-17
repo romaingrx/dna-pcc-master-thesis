@@ -2,17 +2,18 @@
 %-*- coding: utf-8 -*-
 %@author : Romain Graux
 %@date : 2022 May 03, 10:22:49
-%@last modified : 2022 May 04, 16:14:36
+%@last modified : 2022 June 17, 18:59:59
 
 \newcommand{\ACGT}{\textbf{A}, \textbf{C}, \textbf{G} and \textbf{T}}
 
-In this work, we will try to build an end-to-end point cloud compression model for quatarnary based entropy coding. 
+In this work, we will try to build an end-to-end point cloud compression model for quatarnary based entropy coding from publicly accessible existing implementations.
 
-We will first discover the state of the art of compression models for point cloud that leads to the best bitrates for various point clouds and then adapt it to output \ACGT{} symbols instead of the classical $0$ and $1$ binary base.
+We will first discover the state of the art of learning based compression models for point cloud that leads to the best bitrates for various point clouds.
+This will be done by comparing the compression models of the state of the art that can be easily adapted to the needs of the DNA based coding.
+It will serve as a backbone that knows how to turn a point cloud into a smaller latent representation that contains only the information that is necessary to reconstruct the point cloud.
+From this backbone, we will adapt the binary entropy coding to a quaternary based entropy coding.
 
-Then we will have to study the state of the art of DNA based storage and how we can store our long sequence of \ACGT{} in the most efficient way to minimise the cost of storing those datas while trying to recover the compressed point cloud in the most XXXX way.
-For this last part, we will have to study the influence of each parameters to store the DNA strand as small chunks in a solution. At the end, we will have to propose the best parameters to store a DNA strand for a certain period of time.
+We will study the state of the art of DNA based storage and how we can store our sequences of \ACGT{} as efficiently as possible to minimise the cost of storing those datas while trying to build the most resistant sequences regarding the biological constraints and errors introduced.
 
-And finally, we will have to provide the reconstruct model to go from the compressed version to the point cloud as closed as possible from the original one.
-
-\tocontinue{}
+To help us in building the strongest compression models for DNA based compression, we will study the state of the art of DNA based compression and how we can use the state of the art to build the most resistant compression models.
+We will also use a DNA storage simulator to study how well our compression model can produce the most resistant sequences and recover them to reconstruct the point clouds as faithful as the original one.
