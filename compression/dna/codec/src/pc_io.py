@@ -98,7 +98,7 @@ def get_shape_data(resolution, channels_last):
 
 def get_files(input_glob):
     input_glob = input_glob.rstrip('/*') + '/*'
-    return np.array(glob(input_glob, recursive=True))
+    return np.array(sorted(glob(input_glob, recursive=True)))
 
 
 def load_points(files, p_min, p_max, batch_size=32):

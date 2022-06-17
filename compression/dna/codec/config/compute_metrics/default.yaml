@@ -1,13 +1,14 @@
 experiment: ???
+results_dir: ${hydra:runtime.cwd}/results/${experiment}
 
 blocks:
   resolution: 64
   channel_last: true
 io:
     x: ${hydra:runtime.cwd}/datasets/blocks_${blocks.resolution}
-    z: ${hydra:runtime.cwd}/results/${experiment}/compressed_dna_sequences
-    x_hat: ${hydra:runtime.cwd}/results/${experiment}/intermediate_results/x_hat
-    csv: ${hydra:runtime.cwd}/results/${experiment}/metrics.csv
+    z: ${results_dir}/compressed_dna_sequences
+    x_hat: ${results_dir}/intermediate_results/x_hat
+    csv: ${results_dir}/metrics.csv
 # You can add any metric function here and then create a function in the `compute_metrics.py` file
 # with the corresponding name as `def {name}(x, z, x_hat)`
 metrics:
@@ -16,4 +17,5 @@ metrics:
     - num_occupied_voxels
     - nucleotide_rate
     - point_to_point_D1
+    - d1_psnr
 

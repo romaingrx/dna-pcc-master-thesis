@@ -3,7 +3,7 @@
 """
 @author : Romain Graux
 @date : 2022 Mar 30, 21:59:48
-@last modified : 2022 June 09, 21:41:49
+@last modified : 2022 June 12, 23:02:18
 """
 
 import os
@@ -129,10 +129,15 @@ class MESASimulator:
 
         def post_worker(data: dict, url: str, config: Dict, retry:int=0) -> requests.Response:
             json = {**config, **data}
-            r = requests.post(url, json=json)
-            if r.status_code != 200:
+            exception = False
+            try:
+                r = requests.post(url, json=json, timeout=2)
+            # except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
+            except Exception as e:
+                exception = True
+            if exception or r.status_code != 200:
                 if retry >= 3:
-                    raise Exception(r.text)
+                    raise Exception("Retried 3 times, still failed")
                 return post_worker(data, url, config, retry=retry+1)
             return r
 
@@ -157,7 +162,7 @@ class MESASimulator:
         )
 
     def from_uuid(self, uuids: str) -> MESAResponse:
-        data_sequences = [{"uuid": uuid} for uuid in uuids[:10]]
+        data_sequences = [{"uuid": uuid} for uuid in uuids]
         url = self._get_url("/api/all")
         config = {"key":self.get_config("post")["key"], "asHTML":False}
 
@@ -188,7 +193,7 @@ class MESASimulator:
 
 def get_modified_sequence_from_fastq(mesa, args):
     global files, all_sequences
-    files = load_io_files(args.fasta, return_names=True, exception=["out"])
+    files = load_io_files(args.fasta, return_names=True, only=["in", "simulated"])
     all_sequences = {}
     for in_fasta, simulated_fasta, name in files:
         results = mesa.from_fastq(simulated_fasta)

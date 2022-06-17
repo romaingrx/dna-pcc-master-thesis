@@ -2,7 +2,7 @@
 """
 @author : Romain Graux
 @date : 2022 May 10, 11:15:58
-@last modified : 2022 June 05, 23:35:56
+@last modified : 2022 June 17, 12:57:03
 """
 
 from functools import partial
@@ -17,9 +17,6 @@ import tensorflow_compression as tfc
 from jpegdna.codecs import JpegDNA, JPEGDNAGray
 
 from ray.util.multiprocessing import Pool
-# from multiprocessing import Pool
-
-
 from helpers import Namespace, omegaconf2namespace, encode_wrapper, decode_wrapper
 from layers import AnalysisTransform, SynthesisTransform
 from src import pc_io
@@ -43,7 +40,7 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
 
 def parse_codec(name:str, alpha:float):
-    """Parse the codec name and the alpha value."""
+    """Parse the codec name and the alpha value to return the corresponding codec and pack/unpack tensor functions."""
 
     mapping = {
             "BatchSingleChannelJpegDNA" : (partial(BatchSingleChannelJpegDNA, alpha=alpha), pack_tensor_single, unpack_tensor_single),
@@ -158,11 +155,15 @@ class BatchSingleChannelJpegDNA:
 
         global _decode_worker
 
-        def _decode_worker(oligos, alpha, apply_dct):
+        def _decode_worker(oligos, alpha, apply_dct, gammas):
             """Decode a list of oligos into a 2 dimensional array."""
+            # set the context
+            if gammas is not None:
+                JPEGDNAGray.GAMMAS = gammas
+                JPEGDNAGray.GAMMAS_CHROMA = gammas
             return JpegDNA(alpha).decode(oligos.numpy().astype(str), apply_dct=apply_dct)
 
-        f = partial(_decode_worker, alpha=self._alpha, apply_dct=apply_dct)
+        f = partial(_decode_worker, alpha=self._alpha, apply_dct=apply_dct, gammas=self.gammas)
         # y = [f(e) for e in x]
         with Pool(self.num_workers) as p:
             y = list(p.map(f, x))
@@ -238,8 +239,6 @@ class CompressionModel(tf.keras.Model):
         super().__init__(name=name)
         self._args = args
 
-        self.prior = tfc.NoisyDeepFactorized(batch_shape=[args.latent_depth])
-
         self.analysis_transform = AnalysisTransform(args.num_filters, args.latent_depth)
         self.synthesis_transform = SynthesisTransform(args.num_filters)
         self.codec, self.pack_tensor, self.unpack_tensor = parse_codec(args.codec, args.alpha)
@@ -282,49 +281,50 @@ class CompressionModel(tf.keras.Model):
     def compile(self, optimizer, loss):
         super().compile(optimizer=optimizer, loss=loss)
         self.focal_loss = tf.metrics.Mean(name="focal_loss")
-        self.nucleotides_rate = tf.metrics.Mean(name="nucleotides_rate")
+        self.nucleotide_rate = tf.metrics.Mean(name="nucleotide_rate")
 
-    def dna_encoding(self, x, apply_dct=False):
+    def dna_encoding(self, x, apply_dct=False, quantization_span=255):
         """Encodes the latent blocks to DNA oligos."""
         assert (
                 len(x.shape) == 5
                 ), "The input must be of shape [batch_size, b1, b2, b3, latent_depth]."
         shape = batch_size, b1, b2, b3, latent_depth = tf.shape(
                 x
-                )  # TODO change: the way to store the mid shape
+                )
 
         # Quantize the blocks
-        quantized_x, quantize_ranges = quantize(x)
+        quantized_x, quantize_ranges = quantize(x, span=quantization_span)
+        quantized_x = tf.cast(quantized_x, tf.int32)
 
         # Encode the images to DNA oligos
-        # logger.info("Encoding the latent blocks to DNA oligos...")
+        logger.info("Encoding the latent blocks to DNA oligos...")
         with tf.device("/cpu:0"):
             oligos = self.codec.encode_batch(tf.cast(quantized_x, tf.int32), apply_dct=apply_dct)
 
         return oligos, shape[1:], quantize_ranges
 
-    def dna_decoding(self, oligos, shape, quantize_ranges, apply_dct=False):
+    def dna_decoding(self, oligos, shape, quantize_ranges, apply_dct=False, quantization_span=255):
         """Decodes the DNA oligos to latent blocks."""
 
         # Decode the DNA oligos to images
-        # logger.info("Decoding the DNA oligos to latent blocks...")
+        logger.info("Decoding the DNA oligos to latent blocks...")
         with tf.device("/cpu:0"):
             quantized_x = self.codec.decode_batch(oligos, shape, apply_dct=apply_dct)
 
 
         # Dequantize the blocks
         quantized_x = tf.cast(quantized_x, tf.float32)
-        x = dequantize(quantized_x, quantize_ranges)
+        x = dequantize(quantized_x, quantize_ranges, span=quantization_span)
 
         return x
 
-    def compress(self, x, full_output=True, apply_dct=False):
+    def compress(self, x, full_output=True, apply_dct=False, quantization_span=255):
 
-        # Build the encoder (analysis) half of the hierarchical autoencoder.
+        # Build the encoder (analysis transform)
         y = self.analysis_transform(x)
 
-        # Build the bottleneck
-        z, shape, quantize_ranges = self.dna_encoding(y, apply_dct=apply_dct)
+        # Encode the latent blocks to DNA oligos and get the shape and quantization ranges of the blocks
+        z, shape, quantize_ranges = self.dna_encoding(y, apply_dct=apply_dct, quantization_span=quantization_span)
 
         if full_output:
             geo_x = x[:, :, :, :, 0]
@@ -340,16 +340,13 @@ class CompressionModel(tf.keras.Model):
             return z, shape, quantize_ranges, info
         return z, shape, quantize_ranges
 
-    def decompress(self, z, y_shape, quantize_ranges, full_output=True, apply_dct=False):
-        batch_size, *_ = z.shape
-        # Build the decoder (synthesis) half of the hierarchical autoencoder.
-        y_hat = self.dna_decoding(z, y_shape, quantize_ranges, apply_dct=apply_dct)
+    def decompress(self, z, y_shape, quantize_ranges, full_output=True, apply_dct=False, quantization_span=255):
+        r"""Decompresses the DNA streams to the reconstructed probability blocks \tilde{x}."""
 
-        # Need to add the batch dimension if is equal to 1 because tf.quantize squeezes it
-        # if batch_size == 1:
-        #     y_hat = tf.expand_dims(y_hat, 0)
+        # Decode the DNA oligos to latent blocks
+        y_hat = self.dna_decoding(z, y_shape, quantize_ranges, apply_dct=apply_dct, quantization_span=quantization_span)
 
-        # Build the bottleneck
+        # Build the decoder (synthesis transform)
         x_hat = self.synthesis_transform(y_hat)
 
         if full_output:
@@ -359,13 +356,13 @@ class CompressionModel(tf.keras.Model):
     def call(self, x, apply_dct=False):
         """Computes distortion loss."""
 
-        # Compute the bottleneck
+        # Compute the DNA oligos and get the shape and quantization ranges of the blocks
         z, shape, quantize_ranges, compression_info = self.compress(x, apply_dct=apply_dct)
 
+        # Decompress the DNA oligos to the reconstructed probability blocks \tilde{x}
         x_hat, decompression_info = self.decompress(z, shape, quantize_ranges, apply_dct=apply_dct)
 
         # Compute the focal loss and/or color loss across pixels.
-        # Don't clip or round pixel values while training.
         fcl = focal_loss(x, x_hat, gamma=2, alpha=self._args.alpha) / num_voxels
         nucleotide_rate = number_of_nucleotides(z) / num_voxels
         loss = nucleotide_rate + self._args.lmbda * fcl
@@ -384,17 +381,18 @@ class CompressionModel(tf.keras.Model):
         """Performs a test step."""
         loss, info = self.call(x)
         self.focal_loss.update_state(loss)
-        return {m.name: m.result() for m in [self.focal_loss]}
+        self.nucleotide_rate.update_state(info["nucleotide_rate"])
+        return {m.name: m.result() for m in [self.focal_loss, self.nucleotide_rate]}
 
 
 def load_model(args):
-    """Loads the model."""
+    """Loads the model if ."""
     if args.model_checkpoint != "":
         return tf.keras.models.load_model(args.model_checkpoint)
     return CompressionModel(args)
 
 def compress(model, args):
-    global ds, z, y_shape, quantize_ranges, info_compress 
+    global ds, z, y_shape, quantize_ranges, info_compress
     """Compress the dataset"""
     def validate_args(args=args):
         if np.isreal(args.threshold) and args.save_intermediate:
@@ -419,7 +417,8 @@ def compress(model, args):
     # Set the gammas values used in the dct quantization if applicable
     model.codec.gammas = args.gammas
 
-    # Create a tensorflow dataset from the point clouds.
+    # Create a tensorflow dataset from the point clouds and load it into memory
+    # The dataset will load only not already compressed data if the `compress.io.overwrite` flag is set to False
     ds = pc_dir_to_ds(
             args.io.input,
             args.blocks.resolution,
@@ -434,22 +433,18 @@ def compress(model, args):
         out_fnames = [os.path.join(args.io.output, name + ".dna") for name in names]
         batch_size = x.shape[0]
 
-        # Skip if the output file already exists
-        # if os.path.exists(out_fname) and not args.io.overwrite:
-        #     logger.info(f"Because compress.io.overwrite: skipping {out_fname}")
-
-        z, y_shape, quantize_ranges, info_compress = model.compress(x, apply_dct=args.apply_dct)
+        z, y_shape, quantize_ranges, info_compress = model.compress(x, apply_dct=args.apply_dct, quantization_span=args.quantization_span)
 
         # Calculate the adaptive threshold.
         if args.threshold == "adaptive":
-            x_hat, info_decompress = model.decompress(z, y_shape, quantize_ranges, apply_dct=args.apply_dct)
+            x_hat, info_decompress = model.decompress(z, y_shape, quantize_ranges, apply_dct=args.apply_dct, quantization_span=args.quantization_span)
             logger.info("Calculating the adaptive threshold...")
             with Pool(args.num_workers) as pool:
-                f = partial(compute_optimal_threshold, 
-                    delta_t=0.01,
-                    breakpt=150,
-                    verbose=1,
-                    )
+                f = partial(compute_optimal_threshold,
+                        delta_t=0.01,
+                        breakpt=150,
+                        verbose=1,
+                        )
                 ret = list(pool.starmap(f, zip(x_hat, data["pc"].numpy())))
             thresholds, pa = zip(*ret)
 
@@ -464,25 +459,21 @@ def compress(model, args):
 
         logger.info("Pack the representations...")
         nucleotide_streams = [model.pack_tensor(
-                threshold, model.codec.oligo_length, quantize_range, y_shape, z_strings
-                ) for threshold, quantize_range, z_strings in zip(thresholds, quantize_ranges, z)]
+            threshold, model.codec.oligo_length, quantize_range, y_shape, z_strings
+            ) for threshold, quantize_range, z_strings in zip(thresholds, quantize_ranges, z)]
 
         logger.info("Saving the compressed data to %s", args.io.output)
 
         # Save the compressed representations in another thread.
         save_oligos(out_fnames, nucleotide_streams, args.io.output, join_thread=False)
-        # os.makedirs(args.io.output, exist_ok=True)
-        # for stream, out_fname in zip(nucleotide_streams, out_fnames):
-        #     with open(out_fname, "w+") as f:
-        #         f.write(stream)
-
 
 def decompress(model, args):
     """Decompress the dataset"""
-    global ds
 
+    # Load the compressed representations
     files = pc_io.get_files(args.io.input)
 
+    # Decompress them sequentially
     for fname in tqdm(files):
         name = fname.split("/")[-1].split(".")[0]
 
@@ -494,14 +485,15 @@ def decompress(model, args):
         with open(fname, "r") as fd:
             nucleotide_stream = fd.read()
 
-        threshold, _, y_shape, z_strings = model.unpack_tensor(
+        threshold, oligo_length, quantization_range, y_shape, z_strings = model.unpack_tensor(
                 nucleotide_stream,
                 )
 
         # Reconstruct the point clouds.
         logger.info("Reconstructing the point clouds...")
-        x_hat = model.decompress(tf.expand_dims(z_strings, 0), y_shape).numpy()[0]
+        x_hat = model.decompress(tf.expand_dims(z_strings, 0), y_shape, quantization_range, apply_dct=True, quantization_span=args.quantization_span).numpy()[0]
 
+        # Reconstruct the point cloud sparse representation with the threshold.
         pa = np.argwhere(x_hat[..., 0] > threshold.numpy()).astype(np.float32)
 
         # Save the reconstructed point clouds.
@@ -512,7 +504,7 @@ def decompress(model, args):
 
 @hydra.main(config_path="config/main", config_name="default.yaml", version_base="1.2")
 def main(cfg):
-    global args, model
+    # Get the args from the config file and raise error if one of the required arguments is not set.
     args = omegaconf2namespace(cfg, allow_missing=False)
 
     # If gpu needed, set the memory growth option so it does not allocate all the memory.
@@ -535,7 +527,6 @@ def main(cfg):
         compress(model, args.compress)
     elif args.task == "decompress":
         decompress(model, args.decompress)
-
 
 
 if __name__ == "__main__":
