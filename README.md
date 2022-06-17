@@ -1,6 +1,10 @@
 <div>
-    <img height="75" src="docs/imgs/epfl-logo.svg">
-    <img align="right" height="75" src="docs/imgs/mmspg-logo.png">
+    <a href="https://www.epfl.ch">
+        <img height="75" src="docs/imgs/epfl-logo.svg">
+    </a>
+     <a href="https://www.epfl.ch/labs/mmspg">
+        <img align="right" height="75" src="docs/imgs/mmspg-logo.png">
+    </a>
 </div>
 
 <h1 align="center">Point cloud compression for DNA based storage</h1>
@@ -21,6 +25,12 @@ DNA point cloud compression implementation
 In order to be able to play with the compressor, you will need to first install some dependencies.
 
 First create a new virtual environment with `python=3.8.10`
+
+To install the JPEG DNA codec, you will need to go in the [jpegdna repository](codecs/jpeg_dna_codec) and follow the instructions to install it.
+Anyways, you can just execute the following command to install it:
+``` shell
+python setup.py install
+```     
 
 Then, install all the requirements with the command:
 
@@ -51,11 +61,13 @@ bash pull.sh results
 This project is using [hydra](https://hydra.cc) as a configuration handler, all the config files can be found under the [config](compression/dna/codec/config) folder, in this folder you can find a subfolder with the default configuration for each task.
 When you do not know how a particular python files can be configured, you can simply pass the `--help` flag while executing the script, [hydra](https://hydra.cc) will output all the configurable parameters.
 
-You can always override a parameter by adding the parameters as a flag with its value, a full documentation can found [here](https://hydra.cc/docs/configure_hydra/intro).
+You can always override a parameter by adding the parameters as flags with their values; a full documentation can be found [here](https://hydra.cc/docs/configure_hydra/intro).
 
 The folder contains several python files for different purposes.
 
-The [main.py](compression/dna/codec/main.py) contains the main code to `compress` and `decompress` a point cloud dataset into DNA stream.
+- The [main.py](compression/dna/codec/main.py) contains the main code to `compress` and `decompress` a point cloud dataset into DNA stream.
+- The [simulator.py](compression/dna/codec/simulator.py) contains the code to interact with the simulator server.
+- The [compute_metrics.py](compression/dna/codec/compute_metrics.py) contains the code to compute all metrics on the compressed and reconstructed point cloud blocks.
 
 ### Compress
 
@@ -79,7 +91,7 @@ Then to compress a folder containg several blocks in `.ply` format into a folder
 python main.py \
     task="compress" \
     experiment="a0.6_res_t64_Slice_cond_160-10_1750" \ # One of the model to use as backbone for compression
-    ++results_dir="$(pwd)/results" \
+    ++results_dir="$(pwd)/results" \ 
     ++compress.io.input="${datasets_dir}/vox8/ply" \ # The folder should contains all *.ply files
     ++compress.num_workers=20 \ # The number of cores to parallelize the compression
     ++compress.blocks.resolution=64 \ # The resolution of the blocks in the input folder
@@ -133,8 +145,8 @@ python simulator.py \
     ++connection.host="mesa.mosla.de" \ # The host of the MESA server ("localhost" if you run a local docker)
     ++connection.port="" \ # For example "", 80 (http) or 443 (https)
     ++connection.secure=true \ # true if https, false if http
-    ++post.key="${YOUR_API_KEY}" \ # The key that the server gave you in the 
-    ++connection.n_workers=20 \ # The number of threads fetch data from the server in parallel
+    ++post.key="${YOUR_API_KEY}" \ # The API key the server gave you
+    ++connection.n_workers=20 \ # The number of threads to fetch data from the server in parallel
     ++fasta.root="$(pwd)/fasta" # The root directory with the 'in' (fasta files), 'simulated' (the fastq files received by the server) and 'out' (the modified sequences fetched from the server) folders
 ``` 
 
