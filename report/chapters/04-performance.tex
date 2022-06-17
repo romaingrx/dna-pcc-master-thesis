@@ -2,7 +2,7 @@
 %-*- coding: utf-8 -*-
 %@author : Romain Graux
 %@date : 2022 June 07, 17:49:15
-%@last modified : 2022 June 16, 22:07:19
+%@last modified : 2022 June 16, 22:07:23
 
 \label{sec:performance}
 
@@ -61,6 +61,7 @@ If we had wanted to do a naive mapping of the compressed bits to nucleotides, we
 Unfortunately, this naive mapping does not take into account the constraints of the GC-content and homopolymers that are taken into account in the PAIRCODE and Goldman algorithms used in the JPEG DNA codec.
 
 \section{DNA storage simulation}
+\label{sec:simu}
 
 In order to see how well the model is robust against DNA synthesis, storage and sequencing errors, we will simulate a compressed DNA stream with the MESA simulator. To do that we need to split our full stream into fixed length sequences, called \textit{oligos}. In this simulation we will used the default parameters \ref{yaml:mesa-config} with oligos of length $200$, a storage period of $2$ months, an ErrASE synthesis, $40$ PCR cycles to amplify the oligos, a Taq polymerase and we will store the oligos in a E coli host. With these settings, we can now pass a full \textit{fasta} file to the MESA server that will simulate the full process of synthesis, storage and sequencing and give us back the modified sequences. After merging back together all modified sequences into a single stream, we can pass stream to our decoder that will reconstruct the point cloud from it. 
 
