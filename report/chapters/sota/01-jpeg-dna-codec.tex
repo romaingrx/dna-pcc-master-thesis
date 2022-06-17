@@ -13,18 +13,18 @@
 \end{figure}
 
 In 2013, Goldman and al. \cite{bib:goldman} proposed an algorithm to encode digital data into binary while respecting the main constraint of DNA sequencing (homopolymers). 
-The technique proposes to encode data first in a 3-ary Huffman tree so that each byte can be encoded into the digits $0,1,2$ giving smaller representations to more frequent data and longer ones to less frequent data. 
-Once each byte has its own code representation in the tree, the digits can be encoded by mapping to one of the nucleotides while ensuring that the previous encoded nucleotides is not use to encode the current digit. A representation is shown on the Figure~\ref{fig:goldman} for the mapping of the digits regarding the last encoded nucleotide.
+The technique indicates to encode data first in a 3-ary Huffman tree so that each byte can be encoded into the digits $0,1,2$ giving smaller representations to more frequent data and longer ones to less frequent data. 
+Once each byte has its own code representation in the tree, the digits can be encoded by mapping to one of the nucleotides while ensuring that the previous encoded nucleotides are not used to encode the current digit. A representation is shown on the Figure~\ref{fig:goldman} for the mapping of the digits regarding the last encoded nucleotide.
 
 \subsection{PAIRCODE}
 
-PAIRCODE \cite{bib:paircode} is a technique proposed \cite{bib:paircode} in $2019$ to encode any symbols (it is not restricted to binary data) to fixed length codewords.
+PAIRCODE \cite{bib:paircode} is a technique described \cite{bib:paircode} in $2019$ to encode any symbol (not only binary data) to fixed length codewords.
 The quaternary constrained codeword $\mathcal{C}*$ is constructed using mainly pair-elements from the following dictionary:
 $$
 \mathcal{C}_1=\{AT,AC,AG,TA,TC,TG,CA,CT,GA,GT\}
 $$
 
-It is possible to build any codeword of even length by concatening words from these $10$ elements. To build codeword of odd length, it is possible to concatenate an even codeword with one of the word from the dictionary:
+It is possible to build any codeword of even length by concatening words from these $10$ elements. To build a codeword of odd length, it is possible to concatenate an even codeword with one of the words from the dictionary:
 $$
 \mathcal{C}_2=\{A,C,G,T\}
 $$
@@ -43,11 +43,11 @@ This construction guarantees that the final encoded DNA stream does not contain 
 
 The purpose of the JPEG DNA codec is to encode a raw image to DNA code using the JPEG codec and encoding the coefficients to actual DNA nucleotides thanks to the PAIRCODE and Goldman coding.
 
-Before turning an image into a DNA stream, the first steps are to extract the DCT coefficients that are going to be encoded. 
+Before turning an image into a DNA stream, the first step is to extract the DCT coefficients to be encoded. 
 
 With a raw image as input of shape either H$\times$W (gray image) or H$\times$W$\times$3 (RGB image), the first step is to shift the values of the image by $-128$ to center it around $0$ since the values of the pixels are encoded on \textit{uint8} values and are thus betweem $0$ and $255$. Then the discrete cosine transform is applied on these centered values to extract the ($8\times8$) block DCT coefficients. Next, since the codec is dealing with visual information, a uniform scalar quantization is used to turn continuous values to discrete coefficients thanks to predefined quantization tables that give more importance to low frequency cosines (because the human eye is more sensitive to low frequency signals than high frequency ones).  The quantization introduced a lot of zero for high frequencies on the lower right part of the block. The last step is then to flatten the block DCT quantized coefficients in a zigzag maneer starting from the upper left corner, this way, there will be a large part of zeros at the end of the $64$-long flatten array. 
 
-The flatten array is now composed of the DC value (constant intensity) as first element and then 63 AC values corresponding to each particular cosine frequency. As we will see, the DC and AC values are encoded into DNA in two different ways.
+The flattened array is now composed of the DC value (constant intensity) as first element and then 63 AC values corresponding to each particular cosine frequency. As we will see, the DC and AC values are encoded into DNA in two different ways.
 
 In the classical JPEG workflow, each category is mapped to a binary representation thanks to the Huffman tree that will encode the most frequent AC/DC categories to the shortest words. 
 For the DNA version, they used a 3-ary Huffman tree to transform the category into trits and then encode these categories with the Goldman algorithm, the category are determined by the range in which the value falls.
@@ -94,7 +94,7 @@ And for each category, we have a fixed number of codewords with fixed length in 
 
 \vspace{1em}
 
-The only difference between the AC and the DC coding is that the DC coding is always encoded with the category and then the codeword in a particular codebook. But due to the nature of the quantization and the zigzag, there is a lot of following zeros in the AC coefficients, so each time there is a $0$ a counter is incremented at encoding time until it reaches $16$, in which case, a particular codeword is append to the stream and the counter is reinitialized to $0$. 
+The only difference between the AC and the DC coding is that the DC coding is always encoded with the category and then the codeword in a particular codebook. Yet, due to the nature of the quantization and the zigzag, there is a lot of following zeros in the AC coefficients, so each time there is a $0$ a counter is incremented at encoding time until it reaches $16$, in which case, a particular codeword is appended to the stream and the counter is reinitialized to $0$. 
 If a non-zero value happens before the counter reaches $16$, the number of zeros (between $1$ and $15$) is coupled with the category of the current AC coefficient, the counter is reinitialized to $0$ and the values are encoded the same way as described for the DC values.
 
 %    \begin{lstlisting}[language=python]

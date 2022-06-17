@@ -5,3 +5,4 @@ io:
 blocks:
     resolution: 64 # The resolution of the blocks
     channels_last: true
+quantization_span: 255 # The range of the quantization to control the nucleotide rate, between [0, 255]

@@ -240,6 +240,8 @@ def unpack_tensor_single(nucleotidestream, get_header_length=False):
             nucleotides_to_bytes(y_shape_string), dtype=np.uint8
             )
     seeker += 16
+    print(seeker)
+    print(len(nucleotidestream))
 
     # The default oligo length is 200.
     assert (len(nucleotidestream) - seeker) % oligo_length == 0, "Should be a multiple of oligo length"

@@ -3,7 +3,7 @@
 """
 @author : Romain Graux
 @date : 2022 May 13, 15:47:09
-@last modified : 2022 June 09, 17:57:32
+@last modified : 2022 June 14, 11:12:16
 """
 
 import os
@@ -20,17 +20,20 @@ import pandas as pd
 import tensorflow as tf
 from pyntcloud import PyntCloud
 from multiprocessing import Pool
-from jpegdna.codecs import JpegDNA
+from jpegdna.codecs import JpegDNA, JPEGDNAGray
 
 import seaborn as sns
 sns.set_style('whitegrid')
 import matplotlib.pyplot as plt
 
 from main import CompressionModel, BatchSingleChannelJpegDNA
+from main_sphere import BatchSingleChannelJpegDNA
 from src.pc_io import load_pc, get_shape_data, write_df, pa_to_df
 from src.processing import pc_to_occupancy_grid
 from fasta_io import latent_representation_to_fasta
-from utils import pc_dir_to_ds, extract_path, extract_ext, extract_name
+from utils import pc_dir_to_ds, extract_path, extract_ext, extract_name, number_of_nucleotides
+from quantizer import quantize, dequantize
+from fasta_io import latent_representation_to_fasta
 
 
 def align_files(*directories, return_names=False):
@@ -85,10 +88,10 @@ def load_io_files(args, exception=[], only=[], return_names=False):
     """
     Load all files contained in the io subflag.
     """
-    io = args.io if hasattr(args, 'io') else args
+    io = args.get('io', args)
     cdt_file = lambda name: name not in exception and (not len(only) or name in only)
     raw_files = [glob(f"{directory}/*") for name, directory in io.items() if cdt_file(name)]
-    files = align_files(*raw_files, return_names=True)
+    files = align_files(*raw_files, return_names=return_names)
     loader = lazy_loader(zip(*files) if len(files)>1 else np.reshape(files, (-1, 1)), args)
     return loader
 
@@ -178,7 +181,7 @@ def quantization(args):
         # Quantize the latent representation
         quantize_range = np.min(y.numpy()), np.max(y.numpy())
         yq, *_ = tf.quantization.quantize(
-                y, *quantize_range, tf.quint8
+                y, *quantize_range, tf.quint
                 )
 
 
@@ -206,14 +209,43 @@ def study_latent_representation(args):
         sns.displot(y_hat.reshape((-1,)), kde=True)
         plt.show()
 
+def study_coeff_to_length_ratio(args):
+    global x, y, oligos
+
+    shape = (64, 64)
+    codec = BatchSingleChannelJpegDNA(1)
+    files = load_io_files(args, only=['y'])
+    y = next(files)
+    y_shape = y[0].shape
+    for span in [31., 63., 127., 255.]:
+        x, ranges = quantize(y, span)
+        oligos = codec.encode_batch(x, apply_dct=False)
+        reconstructed = codec.decode_batch(oligos, y_shape, apply_dct=False)
+        y_hat = dequantize(tf.cast(reconstructed, tf.float32), ranges, span)
+        print(f"Span: {span} -> {number_of_nucleotides(oligos)}")
+        print(f"    > MSE: {np.mean(np.power(y - y_hat, 2))}")
+
+def study_states(args):
+    files = load_io_files(args, only=['y'])
+    states = []
+    for [y] in files:
+        codec = JPEGDNAGray(1)
+        code, state = codec.full_encode(y.reshape((-1, 160)), "from_img")
+        oligos, n, m, ac, dc = state
+        print(n, m)
+        # np.save(f"static/ac.npy", ac)
+        # np.save(f"static/dc.npy", dc)
+        break
+
+
 
 def to_fastq(args):
     global file, fastq, _args
     _args = args
     files = load_io_files(args, only=['z'], return_names=True)
     for file, name in files:
-        fasta = latent_representation_to_fastq(file, 200)
-        with open(f"fasta/in/{name}.fasta", "w+") as fd:
+        fasta = latent_representation_to_fasta(file, 200)
+        with open(f"fasta_single/in/{name}.fasta", "w+") as fd:
             fd.write(fasta)
 
 

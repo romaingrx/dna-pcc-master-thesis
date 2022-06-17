@@ -42,7 +42,7 @@ Both strands of DNA store the same information, in complementary pairs. The two 
 
 \subsection{Usage}
 
-DNA is a powerfull tool for storing information for biological systems so it can also find its place in the synthetic DNA storage.
+DNA is a powerful tool for storing information for biological systems so it can also find its place in the synthetic DNA storage.
 DNA storage can be used for applications that require for example:
 
 \begin{itemize}
@@ -77,15 +77,15 @@ The way to store binary information into DNA based medium storage and then retri
 
 \subsection{Constraints}
 
-Unfortunately, nucleic acids have biological constraints and can not be assembled in any order like it is the case for binary digits. The DNA strands have to be created in a way that the double helix binds well together and is not immediately desctructed. We must therefore respect the biological constraints to build strong strands that can last for a certain period of time. 
+Unfortunately, nucleic acids have biological constraints and cannot be assembled in any order like it is the case for binary digits. The DNA strands have to be created in a way that the double helix binds well together and is not immediately desctructed. We must therefore respect the biological constraints to build strong strands that can last for a certain period of time. 
 
-In this part, we are going to go through some of the constraints that we have to respect to build a DNA strand and be able to recover it during sequencing time. Unfortunately, the list of constraints is not exhaustive and in the real life, each arrangement of nucleic acids has an impact on the strength of a strand, therefore we can only simulate the longevity of a strand thanks to the actual litterature breakthroughs but not strictly respect all the biological constraints. 
+In this part, we are going to go through some of the constraints that we have to respect to build a DNA strand and be able to recover it during sequencing time. Unfortunately, the list of constraints is not exhaustive and in reality, each arrangement of nucleic acids has an impact on the strength of a strand. As a consequence, we can only simulate the longevity of a strand thanks to past discoveries documented in literature but not strictly respect all the biological constraints. 
 
 All constraints could be reduced to limitations regarding GC content, long strands of a single nucleotide (so-called homopolymers), several repeated subsequences in a strand and motifs with biological relevance. In the next sections, we are going to divide the constraints into each step of the storage process, the explanation for each constraint comes directly from \cite{bib:10.1093/bioinformatics/btaa140}.
 
 \subsubsection{Synthesis}
 
-To synthesis synthetic DNA, \textit{in silico} designed constructs have to be split into smaller fragments [usually 200–3000 base pairs (bp)] \cite{bib:101038}. The fragments are then split into several oligonucleotides (so-called oligos) [usually 40-200 bp] that are individually synthetized. Once synthetized, all oligos are merged back together with either ligase or polymerase-based methods. One of the constraints on the GC content comes from the fact that depending on the synthetis method and the overall GC content of a fragment,  the GC content of each oligo has to be within a specific range. In oligos with high GC content, neighboring guanines tend to form an increased amount of hydrogen bonds, leading to inter/intra-strand folding \cite{bib:101371}.
+To synthesise synthetic DNA, \textit{in silico} designed constructs have to be split into smaller fragments [usually 200–3000 base pairs (bp)] \cite{bib:101038}. The fragments are then split into several oligonucleotides (so-called oligos) [usually 40-200 bp] that are individually synthesised. Once synthesised, all oligos are merged back together with either ligase or polymerase-based methods. One of the constraints on the GC content comes from the fact that depending on the synthesis method and the overall GC content of a fragment,  the GC content of each oligo has to be within a specific range. In oligos with high GC content, neighboring guanines tend to form an increased amount of hydrogen bonds, leading to inter/intra-strand folding \cite{bib:101371}.
 To assemble oligos into larger fragments, the melting temperature (and thus the GC content) should only deviate slightly between oligos. To adhere to this restriction, the designed DNA fragments should be homogenous with respect to GC content. Homopolymers further increase the synthesis complexity, leading to fragments that are only synthesizable by using modified oligos and more sophisticated assembly methods, resulting in increased synthesis costs.
 
 \subsubsection{PCR: Polymerase Chain Reaction}
@@ -113,5 +113,5 @@ In order to simulate without going through an expensive and long process that is
 This simulator has been introduced \cite{bib:10.1093/bioinformatics/btaa140} in March 2020 and is a web application for the assessment of DNA fragments in terms of guanine-cytosine (GC) content, homopolymer occurrences and length, repeating subsequences and undesirable sequence motifs.
 Furthermore, MESA contains a mutation simulator, using either the error probabilities of the assessment calculation, literature-based or user-defined error rates and error spectra. MESA is fully customizable using an easy-to-use web interface. All functionalities of MESA is also contained in a REST API, enabling the incorporation of MESA evaluations into custom workflows for high-throughput evaluation and error simulation of DNA.
 
-As we have seen in the previous section, DNA has a lot of constraints during the synthesis, storage, PCR and sequencing step; With this simulator it is now possible to have a feedback of the strength of a particular DNA strand and thus help us to move towards the best DNA coding to ensure good information retrieval in the end.
+As we have seen in the previous section, DNA has a lot of constraints during the synthesis, storage, PCR and sequencing steps. With this simulator it is now possible to have a feedback on the strength of a particular DNA strand and thus help us move towards the best DNA coding to ensure good information retrieval in the end.
 

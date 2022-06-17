@@ -3,7 +3,7 @@
 """
 @author : Romain Graux
 @date : 2022 May 31, 18:07:48
-@last modified : 2022 May 31, 18:52:51
+@last modified : 2022 June 11, 22:45:42
 """
 
 import os
@@ -20,7 +20,7 @@ def gather_df_metrics(fname, aggregations):
     aggregated = df.groupby('point_cloud_name').agg(aggregations)
     return aggregated.reset_index()
 
-@hydra.main(config_path="config/aggregate_metrics", config_name="default.yaml")
+@hydra.main(config_path="config/aggregate_metrics", config_name="default.yaml", version_base="1.2")
 def main(cfg):
     global aggregated, args, fname, global_df
     args = omegaconf2namespace(cfg)
@@ -29,7 +29,7 @@ def main(cfg):
         fname = os.path.join(args.io.experiences_dir, experience, 'metrics.csv')
         if os.path.exists(fname):
             aggregated = gather_df_metrics(fname, args.aggregation_functions)
-            aggregated.insert(0, 'experience', experience)
+            aggregated.insert(0, 'span', experience)
             global_df = global_df.append(aggregated)
     global_df.to_csv(args.io.output_file, index=False)
 

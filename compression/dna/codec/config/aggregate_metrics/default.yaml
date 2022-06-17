@@ -7,3 +7,4 @@ aggregation_functions:
   num_occupied_voxels: sum
   nucleotide_rate: mean
   point_to_point_D1: mean
+  d1_psnr: mean
