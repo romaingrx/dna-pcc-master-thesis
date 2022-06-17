@@ -2,12 +2,12 @@
 %-*- coding: utf-8 -*-
 %@author : Romain Graux
 %@date : 2022 May 03, 12:27:08
-%@last modified : 2022 June 08, 11:15:52
+%@last modified : 2022 June 17, 15:25:45
 \label{sec:pcc}
 
 Numerous methods have been proposed to compress point clouds in the literature. They are usually based on different structures than a classical list of coordinates.                                
 Octrees, for example, have been widely used for this purpose \cite{bib:octree}. 
-The octree representation consists of diving recursively the three dimensional space as nodes of a tree as shown on Figure \ref{fig:octree}.
+The octree representation consists of diving recursively the three dimensional space as nodes of a tree as shown on Figure \ref{fig:octree}, each time the space is divided in 8 subspaces with the same dimensions.
 
 \begin{figure}
     \centering
@@ -25,11 +25,12 @@ The octree representation consists of diving recursively the three dimensional s
 
 Compression algorithms using learning based autoencoders architectures have also demonstrated good performance. While some take as input point coordinates \cite{bib:9102866}, others take as input voxelized versions of the point clouds. 
 Voxelized point clouds consist of occupancy grid of regular spaced points so that several points are merged together in a single voxel as shown on Figure \ref{fig:voxelized}.
-A voxel is similar to a three dimensional pixel.
-These three dimensional grids can be then used as input for a \textit{3D convolutional layer}.
+A voxel can be seen as a three dimensional pixel.
+These three dimensional grids can be then used as input for a \textit{3D convolutional layer}. 
+Unfortunately with this structure, we loose all edges information.
 
 
-The current state of the art for point cloud compression that we will use in this project is a model called "Latent Space Slicing For Enhanced Entropy Modeling in Learning-Based Point Cloud Geometry Compression" and that has been developed by Nicolas Frank, Davi Lazzarotto and Touradj Ebrahimi at the MMSPG laboratory (EPFL).
+The current state of the art for point cloud compression that we will used in this project is a model called "Latent Space Slicing For Enhanced Entropy Modeling in Learning-Based Point Cloud Geometry Compression" and that has been developed by Nicolas Frank, Davi Lazzarotto and Touradj Ebrahimi at the MMSPG laboratory (EPFL).
 
 \subsection{Model architecture}
 \label{subsec:model-architecture}
@@ -41,12 +42,11 @@ The current state of the art for point cloud compression that we will use in thi
     \label{fig:pcc-geo-slicing-architecture}
 \end{figure}
 
-This model is shown on Figure \ref{fig:pcc-geo-slicing-architecture} and consists in a 3D autoencoder architecture with latent entropy coding. 
+This model is shown on Figure \ref{fig:pcc-geo-slicing-architecture} and consists in a 3D autoencoder architecture with latent entropy coding and is inspired by "Channel-wise autoregressive entropy models for learned image compression" developped by D. Minnen and S. Singh \cite{bib:2d-pcc-slicing}. 
 The input of the model is an occupancy cubic grid with $k \times k \times k$ voxels represented by $1$ when occupied and $0$ otherwise. 
 
 
-The first block (Analysis transform) of the model is composed of 3 \textit{3D convolutional layers} and 2 \textit{convolutional residual blocks} arranged staggered which produces a latent representation $y$ of shape $l \times l \times l \times d$ with $d$ being the latent dimension. 
-
+The first block (Analysis transform) of the model is composed of 3 \textit{3D convolutional layers} and 2 \textit{convolutional residual blocks} arranged staggered which produces a latent representation $y$ of shape $l \times l \times l \times d$ with $d$ being the latent dimension. The nature of the convolutional layer allows inputs of different shapes. 
 
 This latent representation is then fed into an Hyper-Analysis transform block yielding $z$. This hyperprior is passed to the bitstream as side information after quantization, and is used to model the entropy of the quantized latent features $\hat{y}$ after going through the hyper-synthesis. 
 
@@ -68,6 +68,6 @@ $$
 
 \noindent with $\alpha$ and $\gamma$ being configurable hyperparameters. This focal loss is a so-called \href{https://www.tensorflow.org/api_docs/python/tf/keras/losses/BinaryFocalCrossentropy}{binary weighted focal crossentropy loss}.
 
-The last step to recover the actual binary occupancy grid for each voxel from the output probability occupancy grid $\tilde{x}$ is to apply a threshold $t$ and round every value above $t$ to $1$ and $0$ otherwise. While a naive approach would be to set this threshold $t$ to $0.5$, they decided to find the best threshold $t \in [0,1]$ such that it minimizes the point-to-point MSE \cite{bib:8296925} between the original and reconstructed rounded block.
+The last step to recover the actual binary occupancy grid for each voxel from the output probability occupancy grid $\tilde{x}$ is to apply a threshold $t$ and round every value above $t$ to $1$ and $0$ otherwise. While a naive approach would be to set this threshold $t$ to $0.5$, they decided to find the best threshold $t \in [0,1]$ at compression time such that it minimizes the point-to-point MSE \cite{bib:8296925} between the original and reconstructed rounded block.
 
 This technique was introduced by \cite{bib:9287077} and has proven to enhance reconstruction quality without significantly impacting the bitrate as it is only required to add a threshold $t \in [0,100]$ in the final bitstream.

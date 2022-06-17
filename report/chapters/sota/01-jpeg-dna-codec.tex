@@ -2,7 +2,7 @@
 %-*- coding: utf-8 -*-
 %@author : Romain Graux
 %@date : 2022 June 06, 10:01:02
-%@last modified : 2022 June 16, 19:09:47
+%@last modified : 2022 June 17, 14:40:15
 
 \subsection{Goldman coding}
 \begin{figure}
@@ -12,26 +12,24 @@
     \label{fig:goldman}
 \end{figure}
 
-In 2013, Goldman and al. \cite{bib:goldman} proposed an algorithm to encode digital data into binary while respecting the main constraint of DNA sequencing, homopolymers. 
-The technique proposes to encode data first in a 3-ary Huffman tree so that each byte can be encoded into the digits $0,1,2$ giving a smaller representation to more frequent data and longer one to less frequent data. 
+In 2013, Goldman and al. \cite{bib:goldman} proposed an algorithm to encode digital data into binary while respecting the main constraint of DNA sequencing (homopolymers). 
+The technique proposes to encode data first in a 3-ary Huffman tree so that each byte can be encoded into the digits $0,1,2$ giving smaller representations to more frequent data and longer ones to less frequent data. 
 Once each byte has its own code representation in the tree, the digits can be encoded by mapping to one of the nucleotides while ensuring that the previous encoded nucleotides is not use to encode the current digit. A representation is shown on the Figure~\ref{fig:goldman} for the mapping of the digits regarding the last encoded nucleotide.
 
 \subsection{PAIRCODE}
 
-PAIRCODE \cite{bib:paircode} is a technique proposed in $2019$ to encode any symbols (it is not restricted to binary data) to fixed length codewords.
+PAIRCODE \cite{bib:paircode} is a technique proposed \cite{bib:paircode} in $2019$ to encode any symbols (it is not restricted to binary data) to fixed length codewords.
 The quaternary constrained codeword $\mathcal{C}*$ is constructed using mainly pair-elements from the following dictionary:
 $$
 \mathcal{C}_1=\{AT,AC,AG,TA,TC,TG,CA,CT,GA,GT\}
 $$
 
-It is possible to build any codeword of even length by concatening words from these $10$ elements. To build codeword of odd length, it is possible to concatenate one of the word from the dictionary:
+It is possible to build any codeword of even length by concatening words from these $10$ elements. To build codeword of odd length, it is possible to concatenate an even codeword with one of the word from the dictionary:
 $$
 \mathcal{C}_2=\{A,C,G,T\}
 $$
 
 This construction guarantees that the final encoded DNA stream does not contain homopylmers and a GC-percentage higher than the AT-percentage.
-
-
 
 \subsection{JPEG DNA codec}
 \label{subsec:jpegdna}
@@ -51,10 +49,9 @@ With a raw image as input of shape either H$\times$W (gray image) or H$\times$W$
 
 The flatten array is now composed of the DC value (constant intensity) as first element and then 63 AC values corresponding to each particular cosine frequency. As we will see, the DC and AC values are encoded into DNA in two different ways.
 
-
 In the classical JPEG workflow, each category is mapped to a binary representation thanks to the Huffman tree that will encode the most frequent AC/DC categories to the shortest words. 
 For the DNA version, they used a 3-ary Huffman tree to transform the category into trits and then encode these categories with the Goldman algorithm, the category are determined by the range in which the value falls.
-The AC and DC indices are then encoded using a fixed length $l$ codebook that belongs to a code which has been generated using PAIRCODE.
+The AC and DC coefficients are then encoded using a codebook with fixed length $l$ codewords, the codebooks have been generated using PAIRCODE.
 
 For example, here is how the absolute AC values are categorized:
 
